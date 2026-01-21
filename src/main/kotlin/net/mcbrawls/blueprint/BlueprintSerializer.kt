@@ -58,4 +58,8 @@ open class BlueprintSerializer<T>(
     open operator fun get(id: String): Blueprint<T>? {
         return blueprints[id]
     }
+
+    fun collectBlueprints(): Map<String, Blueprint<T>> {
+        return blueprints.toMap()
+    }
 }

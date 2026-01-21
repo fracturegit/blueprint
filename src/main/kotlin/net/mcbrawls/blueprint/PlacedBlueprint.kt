@@ -6,28 +6,32 @@ data class PlacedBlueprint<T>(
 ) {
     val box: Box = Box(position, position.plus(blueprint.size))
 
-    /**
-     * Gets all anchors of a given id.
-     */
-    fun getAnchors(id: String): List<Anchor> {
-        return blueprint.anchors
-            .filter { (testedId, _) -> testedId == id }
-            .map { (_, anchor) -> getAnchorOffset(anchor) }
+    fun getAllAnchors(): List<Pair<String, Anchor>> {
+        return blueprint.anchors.map { (id, anchor) -> id to offsetAnchor(anchor) }
     }
 
     /**
-     * Gets a given anchor offset for this placed blueprint.
+     * Gets all anchors of a given id.
      */
-    fun getAnchorOffset(anchor: Anchor): Anchor {
-        return Anchor(anchor.position.add(position), anchor.rotation, anchor.data)
+    fun getAnchorsWithId(id: String): List<Anchor> {
+        return blueprint.anchors
+            .filter { (testedId, _) -> testedId == id }
+            .map { (_, anchor) -> offsetAnchor(anchor) }
     }
 
     /**
      * Gets an anchor position from an anchor id assumed to be unique.
      * @return the placed offset position of the given anchor
      */
-    fun getUniqueAnchor(id: String): Anchor? {
-        return getAnchors(id).firstOrNull()
+    fun getAnchorWithId(id: String): Anchor? {
+        return getAnchorsWithId(id).firstOrNull()
+    }
+
+    /**
+     * Gets a given anchor offset for this placed blueprint.
+     */
+    fun offsetAnchor(anchor: Anchor): Anchor {
+        return Anchor(anchor.position.add(position), anchor.rotation, anchor.data)
     }
 
     fun forEachPosition(action: (Vec3i) -> Unit) {
