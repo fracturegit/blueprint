@@ -11,20 +11,25 @@ import net.minestom.server.instance.block.Block
 
 class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: String, vararg aliases: String) : AbstractCommand(name, *aliases) {
     init {
-        val blueprintArg = ArgumentType.Word("blueprint").let { arg ->
-            arg.setSuggestionCallback { _, _, suggestion ->
-                val blueprints = serializer.collectBlueprints()
-                suggest(blueprints.keys, suggestion)
+        addSyntax {
+            requireBase()
+
+            val blueprintArg = ArgumentType.Word("blueprint").let { arg ->
+                arg.setSuggestionCallback { _, _, suggestion ->
+                    val blueprints = serializer.collectBlueprints()
+                    suggest(blueprints.keys, suggestion)
+                }
+            }
+
+            args(blueprintArg)
+
+            playerExecutor { player, context ->
+                val blueprintId = context[blueprintArg]
+                val blueprintKey = Key.key(blueprintId)
+                val blueprint = serializer[blueprintKey] ?: error("No blueprint: $blueprintKey")
+                execute(player, blueprint, blueprintKey)
             }
         }
-
-        addSyntax(exceptionalExecutor { sender, context ->
-            verifyPlayer(sender, 2)
-            val blueprintId = context[blueprintArg]
-            val blueprintKey = Key.key(blueprintId)
-            val blueprint = serializer[blueprintKey] ?: error("No blueprint: $blueprintKey")
-            execute(sender, blueprint, blueprintKey)
-        }, blueprintArg)
     }
 
     private fun execute(player: Player, blueprint: Blueprint<Block>, blueprintId: Key) {
