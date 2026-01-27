@@ -21,22 +21,37 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
                 }
             }
 
-            args(blueprintArg)
+            args(ArgumentType.Literal("open"), blueprintArg)
 
             playerExecutor { player, context ->
                 val blueprintId = context[blueprintArg]
                 val blueprintKey = Key.key(blueprintId)
                 val blueprint = serializer[blueprintKey] ?: error("No blueprint: $blueprintKey")
-                execute(player, blueprint, blueprintKey)
+                executeOpen(player, blueprint, blueprintKey)
+            }
+        }
+
+        addSyntax {
+            requireBase()
+
+            args(ArgumentType.Literal("save"))
+
+            playerExecutor { player, context ->
+                val instance = player.instance as? BlueprintEditorInstance ?: error("Not in blueprint editor")
+                executeSave(player, instance)
             }
         }
     }
 
-    private fun execute(player: Player, blueprint: Blueprint<Block>, blueprintId: Key) {
+    private fun executeOpen(player: Player, blueprint: Blueprint<Block>, blueprintId: Key) {
         BlueprintEditorHandler.add(blueprint, blueprintId) { instance ->
             val size = blueprint.size
             player.setInstance(instance, BlueprintEditorInstance.ORIGIN.asPos().add(size.x / 2.0, size.y / 2.0, size.z / 2.0)).join()
             player.gameMode = GameMode.SPECTATOR
         }
+    }
+
+    private fun executeSave(player: Player, instance: BlueprintEditorInstance) {
+        BlueprintEditorHandler.save(instance)
     }
 }

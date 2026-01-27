@@ -4,7 +4,10 @@ package net.mcbrawls.fracture.blueprint.editor
 
 import net.kyori.adventure.text.Component
 import net.mcbrawls.blueprint.Anchor
+import net.mcbrawls.blueprint.Vec2f
+import net.mcbrawls.blueprint.Vec3d
 import net.minestom.server.color.DyeColor
+import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Vec
 import net.minestom.server.entity.Entity
 import net.minestom.server.entity.EntityType
@@ -15,6 +18,7 @@ import net.minestom.server.entity.metadata.other.InteractionMeta
 import net.minestom.server.network.packet.server.play.ParticlePacket
 import net.minestom.server.network.packet.server.play.SetPassengersPacket
 import net.minestom.server.particle.Particle
+import java.util.Optional
 
 class AnchorEntity(var anchorId: String, anchor: Anchor) : Entity(EntityType.INTERACTION) {
     var anchorData: String? = anchor.data.orElse(null)
@@ -52,6 +56,11 @@ class AnchorEntity(var anchorId: String, anchor: Anchor) : Entity(EntityType.INT
 
     fun updateNametag() {
         nametag.updateNametag()
+    }
+
+    fun createAnchor(root: BlockVec): Anchor {
+        val pos = Vec3d(position.x - root.x(), position.y - root.y(), position.z - root.z())
+        return Anchor(pos, Vec2f(position.yaw, position.pitch), Optional.ofNullable(anchorData))
     }
 
     inner class Nametag : Entity(EntityType.TEXT_DISPLAY) {

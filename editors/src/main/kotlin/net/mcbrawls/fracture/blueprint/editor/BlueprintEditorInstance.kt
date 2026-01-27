@@ -1,15 +1,22 @@
 package net.mcbrawls.fracture.blueprint.editor
 
 import net.kyori.adventure.key.Key
+import net.kyori.adventure.nbt.BinaryTagIO
+import net.kyori.adventure.nbt.CompoundBinaryTag
 import net.kyori.adventure.sound.Sound
 import net.kyori.adventure.text.Component
 import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
+import net.mcbrawls.blueprint.Box
+import net.mcbrawls.blueprint.PalettedState
 import net.mcbrawls.blueprint.PlacedBlueprint
 import net.mcbrawls.blueprint.Vec2f
 import net.mcbrawls.blueprint.Vec3d
+import net.mcbrawls.blueprint.Vec3i
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
+import net.mcbrawls.blueprint.util.NbtOps
+import net.mcbrawls.codex.encodeQuick
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
 import net.minestom.server.entity.Player
@@ -28,13 +35,18 @@ import net.minestom.server.item.Material
 import net.minestom.server.sound.SoundEvent
 import net.minestom.server.tag.Tag
 import net.minestom.server.world.DimensionType
+import java.io.File
 import java.util.Optional
 import java.util.UUID
+import kotlin.math.max
+import kotlin.math.min
 
 class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
     private lateinit var placedBlueprint: PlacedBlueprint<Block>
+
+    private val bounds = Bounds()
 
     fun initializeInternal() {
         placedBlueprint = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
@@ -205,10 +217,95 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
     }
 
+    override fun setBlock(x: Int, y: Int, z: Int, block: Block, doBlockUpdates: Boolean) {
+        super.setBlock(x, y, z, block, doBlockUpdates)
+        bounds.update(x, y, z)
+    }
+
+    fun save(folder: File) {
+        val path = "${blueprintId.namespace()}/${blueprintId.value()}"
+        val file = folder.resolve("$path.nbt")
+        file.parentFile.mkdirs()
+
+        val palette = mutableListOf<Block>()
+        val palettedStates = mutableListOf<PalettedState>()
+
+        val min = bounds.min
+        val blocks = getBlocks()
+
+        // create palette
+        blocks.forEach { (position, block) ->
+            if (block !in palette) {
+                palette.add(block)
+            }
+
+            // create paletted state
+            val derivedPosition = Vec3i(position.x - min.blockX, position.y - min.blockY, position.z - min.blockZ)
+            val paletteId = palette.indexOf(block)
+            palettedStates.add(PalettedState(derivedPosition, paletteId))
+        }
+
+        // create anchors
+        val anchors = mutableListOf<Pair<String, Anchor>>()
+        entities.filterIsInstance<AnchorEntity>().forEach { anchorEntity ->
+            val id = anchorEntity.anchorId
+            val anchor = anchorEntity.createAnchor(min)
+            anchors.add(id to anchor)
+        }
+
+        val blueprint = Blueprint(palette, palettedStates, anchors)
+        val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
+        if (tag is CompoundBinaryTag) {
+            file.outputStream().use {
+                BinaryTagIO.writer().write(tag, it, BinaryTagIO.Compression.GZIP)
+            }
+        }
+    }
+
+    fun getBlocks(): Map<Vec3i, Block> {
+        val min = bounds.min
+        val max = bounds.max
+        val box = Box(
+            Vec3i(min.blockX, min.blockY, min.blockZ),
+            Vec3i(max.blockX, max.blockY, max.blockZ),
+        )
+
+        return buildMap {
+            box.forEach { position ->
+                val block = getBlock(position.x, position.y, position.z)
+
+                if (block.isAir) return@forEach
+
+                this[position] = block
+            }
+        }
+    }
+
+    class Bounds {
+        var min: BlockVec = ORIGIN
+            private set
+
+        var max: BlockVec = ORIGIN
+            private set
+
+        fun update(x: Int, y: Int, z: Int) {
+            min = BlockVec(
+                min(min.blockX, x),
+                min(min.blockY, y),
+                min(min.blockZ, z)
+            )
+            max = BlockVec(
+                max(max.blockX, x),
+                max(max.blockY, y),
+                max(max.blockZ, z)
+            )
+        }
+    }
+
     companion object {
         val ORIGIN = BlockVec(0, 100, 0)
 
         val ACTIVE_ANCHOR_TAG: Tag<UUID> = Tag.UUID("active_anchor")
-        val ANCHOR_MOD_TYPE_TAG: Tag<AnchorModType> = Tag.Transient<AnchorModType>("anchor_mod_type")
+        val ANCHOR_MOD_TYPE_TAG: Tag<AnchorModType> = Tag.Transient("anchor_mod_type")
     }
 }

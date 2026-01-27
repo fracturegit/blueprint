@@ -10,6 +10,7 @@ import net.minestom.server.instance.LightingChunk
 import net.minestom.server.instance.block.Block
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+import java.io.File
 import java.util.UUID
 
 object BlueprintEditorHandler {
@@ -59,5 +60,10 @@ object BlueprintEditorHandler {
         val instanceManager = MinecraftServer.getInstanceManager()
         instanceManager.unregisterInstance(instance)
         instances.remove(instance.uuid)
+    }
+
+    fun save(instance: BlueprintEditorInstance) {
+        logger.info("Saving blueprint editor instance ${instance.uuid}")
+        instance.save(File("generated_blueprints"))
     }
 }
