@@ -2,6 +2,7 @@ package net.mcbrawls.blueprint
 
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
+import java.util.Optional
 
 data class State(
     val blockId: String,
@@ -12,8 +13,8 @@ data class State(
             instance.group(
                 Codec.STRING.fieldOf("Name").forGetter(State::blockId),
                 Codec.unboundedMap(Codec.STRING, Codec.STRING)
-                    .fieldOf("Properties")
-                    .orElse(emptyMap())
+                    .lenientOptionalFieldOf("Properties")
+                    .xmap({ statex -> statex.orElse(emptyMap()) }, Optional<State>::of)
                     .forGetter(State::properties),
             ).apply(instance, ::State)
         }

@@ -2,6 +2,7 @@ package net.mcbrawls.blueprint
 
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
+import net.mcbrawls.codex.nativePair
 import java.util.Optional
 
 /**
@@ -20,5 +21,10 @@ data class Anchor(
                 Codec.STRING.optionalFieldOf("data").orElseGet(Optional<String>::empty).forGetter(Anchor::data),
             ).apply(instance, ::Anchor)
         }
+
+        val LEGACY_LIST_CODEC: Codec<List<Pair<String, Anchor>>> = Codec.withAlternative(
+            nativePair(Codec.STRING.fieldOf("id").codec(), CODEC).listOf(),
+            Codec.unboundedMap(Codec.STRING, CODEC).xmap({ it.toList() }, { it.toMap() })
+        )
     }
 }

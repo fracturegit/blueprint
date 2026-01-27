@@ -2,7 +2,6 @@ package net.mcbrawls.blueprint
 
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
-import net.mcbrawls.codex.nativePair
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.util.function.Consumer
@@ -26,6 +25,10 @@ data class Blueprint<T>(
 
     fun forEachPosition(action: (Vec3i) -> Unit) {
         palettedStates.map(PalettedState::pos).forEach(action)
+    }
+
+    override fun toString(): String {
+        return "Blueprint{${palette.size} unique, ${palettedStates.size} positions, ${anchors.size} anchors}"
     }
 
     companion object {
@@ -56,10 +59,7 @@ data class Blueprint<T>(
                     .fieldOf("regions")
                     .orElse(emptyMap())
                     .forGetter(Blueprint::regions),*/
-                Codec.withAlternative(
-                    nativePair(Codec.STRING.fieldOf("id").codec(), Anchor.CODEC).listOf(),
-                    Codec.unboundedMap(Codec.STRING, Anchor.CODEC).xmap({ it.toList() }, { it.toMap() })
-                )
+                Anchor.LEGACY_LIST_CODEC
                     .fieldOf("anchors")
                     .orElse(emptyList())
                     .forGetter(Blueprint<T>::anchors),

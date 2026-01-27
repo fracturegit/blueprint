@@ -49,21 +49,21 @@ public class NbtOps implements DynamicOps<BinaryTag> {
         return EndBinaryTag.endBinaryTag();
     }
 
-    public <U> U convertTo(DynamicOps<U> dynamicOps, BinaryTag binaryTag) {
+    public <U> U convertTo(DynamicOps<U> ops, BinaryTag binaryTag) {
         return switch (binaryTag) {
-            case EndBinaryTag nbtEnd -> dynamicOps.empty();
-            case ByteBinaryTag tag -> dynamicOps.createByte(tag.value());
-            case ShortBinaryTag tag -> dynamicOps.createShort(tag.value());
-            case IntBinaryTag tag -> dynamicOps.createInt(tag.value());
-            case LongBinaryTag tag -> dynamicOps.createLong(tag.value());
-            case FloatBinaryTag tag -> dynamicOps.createFloat(tag.value());
-            case DoubleBinaryTag tag -> dynamicOps.createDouble(tag.value());
-            case ByteArrayBinaryTag nbtByteArray -> dynamicOps.createByteList(ByteBuffer.wrap(nbtByteArray.value()));
-            case StringBinaryTag tag -> dynamicOps.createString(tag.value());
-            case ListBinaryTag nbtList -> this.convertList(dynamicOps, nbtList);
-            case CompoundBinaryTag nbtCompound -> this.convertMap(dynamicOps, nbtCompound);
-            case IntArrayBinaryTag nbtIntArray -> dynamicOps.createIntList(Arrays.stream(nbtIntArray.value()));
-            case LongArrayBinaryTag nbtLongArray -> dynamicOps.createLongList(Arrays.stream(nbtLongArray.value()));
+            case EndBinaryTag _ -> ops.empty();
+            case ByteBinaryTag tag -> ops.createByte(tag.value());
+            case ShortBinaryTag tag -> ops.createShort(tag.value());
+            case IntBinaryTag tag -> ops.createInt(tag.value());
+            case LongBinaryTag tag -> ops.createLong(tag.value());
+            case FloatBinaryTag tag -> ops.createFloat(tag.value());
+            case DoubleBinaryTag tag -> ops.createDouble(tag.value());
+            case ByteArrayBinaryTag nbtByteArray -> ops.createByteList(ByteBuffer.wrap(nbtByteArray.value()));
+            case StringBinaryTag tag -> ops.createString(tag.value());
+            case ListBinaryTag nbtList -> this.convertList(ops, nbtList);
+            case CompoundBinaryTag nbtCompound -> this.convertMap(ops, nbtCompound);
+            case IntArrayBinaryTag nbtIntArray -> ops.createIntList(Arrays.stream(nbtIntArray.value()));
+            case LongArrayBinaryTag nbtLongArray -> ops.createLongList(Arrays.stream(nbtLongArray.value()));
             default -> throw new IllegalStateException("Unexpected value: " + binaryTag);
         };
     }
@@ -139,16 +139,13 @@ public class NbtOps implements DynamicOps<BinaryTag> {
                 throw new MatchException(var7.toString(), var7);
             }
 
-            CompoundBinaryTag var11;
+            CompoundBinaryTag.Builder builder = CompoundBinaryTag.builder();
             if (binaryTag instanceof CompoundBinaryTag nbtCompound) {
-                var11 = NbtHelpers.shallowCopy(nbtCompound);
-            } else {
-                var11 = CompoundBinaryTag.empty();
+                nbtCompound.forEach((entry) -> builder.put(entry.getKey(), entry.getValue()));
             }
 
-            CompoundBinaryTag nbtCompound2 = var11;
-            nbtCompound2.put(string, binaryTag3);
-            return DataResult.success(nbtCompound2);
+            builder.put(string, binaryTag3);
+            return DataResult.success(builder.build());
         } else {
             return DataResult.error(() -> "key is not a string: " + binaryTag2, binaryTag);
         }
@@ -158,24 +155,21 @@ public class NbtOps implements DynamicOps<BinaryTag> {
         if (!(BinaryTag instanceof CompoundBinaryTag) && !(BinaryTag instanceof EndBinaryTag)) {
             return DataResult.error(() -> "mergeToMap called with not a map: " + BinaryTag, BinaryTag);
         } else {
-            CompoundBinaryTag var10000;
+            CompoundBinaryTag.Builder builder = CompoundBinaryTag.builder();
             if (BinaryTag instanceof CompoundBinaryTag nbtCompound) {
-                var10000 = NbtHelpers.shallowCopy(nbtCompound);
-            } else {
-                var10000 = CompoundBinaryTag.empty();
+                nbtCompound.forEach((entry) -> builder.put(entry.getKey(), entry.getValue()));
             }
 
-            CompoundBinaryTag nbtCompound2 = var10000;
             List<BinaryTag> list = new ArrayList<>();
             mapLike.entries().forEach((pair) -> {
                 BinaryTag binaryTag = pair.getFirst();
                 if (binaryTag instanceof StringBinaryTag tag) {
-                    nbtCompound2.put(tag.value(), pair.getSecond());
+                    builder.put(tag.value(), pair.getSecond());
                 } else {
                     list.add(binaryTag);
                 }
             });
-            return !list.isEmpty() ? DataResult.error(() -> "some keys are not strings: " + list, nbtCompound2) : DataResult.success(nbtCompound2);
+            return !list.isEmpty() ? DataResult.error(() -> "some keys are not strings: " + list, builder.build()) : DataResult.success(builder.build());
         }
     }
 
@@ -183,14 +177,11 @@ public class NbtOps implements DynamicOps<BinaryTag> {
         if (!(BinaryTag instanceof CompoundBinaryTag) && !(BinaryTag instanceof EndBinaryTag)) {
             return DataResult.error(() -> "mergeToMap called with not a map: " + BinaryTag, BinaryTag);
         } else {
-            CompoundBinaryTag var10000;
+            CompoundBinaryTag.Builder builder = CompoundBinaryTag.builder();
             if (BinaryTag instanceof CompoundBinaryTag nbtCompound) {
-                var10000 = NbtHelpers.shallowCopy(nbtCompound);
-            } else {
-                var10000 = CompoundBinaryTag.empty();
+                nbtCompound.forEach((entry) -> builder.put(entry.getKey(), entry.getValue()));
             }
 
-            CompoundBinaryTag nbtCompound2 = var10000;
             List<BinaryTag> list = new ArrayList<>();
 
             for(Map.Entry<BinaryTag, BinaryTag> entry : map.entrySet()) {
@@ -203,23 +194,23 @@ public class NbtOps implements DynamicOps<BinaryTag> {
                         throw new MatchException(var11.toString(), var11);
                     }
 
-                    nbtCompound2.put(string, entry.getValue());
+                    builder.put(string, entry.getValue());
                 } else {
                     list.add(binaryTag2);
                 }
             }
 
             if (!list.isEmpty()) {
-                return DataResult.error(() -> "some keys are not strings: " + list, nbtCompound2);
+                return DataResult.error(() -> "some keys are not strings: " + list, builder.build());
             } else {
-                return DataResult.success(nbtCompound2);
+                return DataResult.success(builder.build());
             }
         }
     }
 
     public DataResult<Stream<Pair<BinaryTag, BinaryTag>>> getMapValues(BinaryTag BinaryTag) {
         if (BinaryTag instanceof CompoundBinaryTag nbtCompound) {
-            return DataResult.success(NbtHelpers.entrySet(nbtCompound).entrySet().stream().map((entry) -> Pair.of(this.createString(entry.getKey()), entry.getValue())));
+            return DataResult.success(nbtCompound.stream().map((entry) -> Pair.of(this.createString(entry.getKey()), entry.getValue())));
         } else {
             return DataResult.error(() -> "Not a map: " + BinaryTag);
         }
@@ -228,8 +219,8 @@ public class NbtOps implements DynamicOps<BinaryTag> {
     public DataResult<Consumer<BiConsumer<BinaryTag, BinaryTag>>> getMapEntries(BinaryTag BinaryTag) {
         if (BinaryTag instanceof CompoundBinaryTag nbtCompound) {
             return DataResult.success((biConsumer) -> {
-                NbtHelpers.entrySet(nbtCompound).forEach((s, binaryTag) ->
-                        biConsumer.accept(this.createString(s), binaryTag)
+                nbtCompound.stream().forEach((entry) ->
+                        biConsumer.accept(this.createString(entry.getKey()), entry.getValue())
                 );
             });
         } else {
@@ -239,7 +230,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
 
     public DataResult<MapLike<BinaryTag>> getMap(BinaryTag BinaryTag) {
         if (BinaryTag instanceof final CompoundBinaryTag nbtCompound) {
-            return DataResult.success(new MapLike<BinaryTag>() {
+            return DataResult.success(new MapLike<>() {
                 @Nullable
                 public BinaryTag get(BinaryTag BinaryTag) {
                     if (BinaryTag instanceof StringBinaryTag tag) {
@@ -255,7 +246,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
                 }
 
                 public Stream<Pair<BinaryTag, BinaryTag>> entries() {
-                    return NbtHelpers.entrySet(nbtCompound).entrySet().stream().map((entry) -> Pair.of(NbtOps.this.createString(entry.getKey()), entry.getValue()));
+                    return nbtCompound.stream().map((entry) -> Pair.of(NbtOps.this.createString(entry.getKey()), entry.getValue()));
                 }
 
                 public String toString() {
@@ -268,7 +259,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
     }
 
     public BinaryTag createMap(Stream<Pair<BinaryTag, BinaryTag>> stream) {
-        CompoundBinaryTag nbtCompound = CompoundBinaryTag.empty();
+        CompoundBinaryTag.Builder nbtCompound = CompoundBinaryTag.builder();
         stream.forEach((entry) -> {
             BinaryTag BinaryTag = entry.getFirst();
             BinaryTag BinaryTag2 = entry.getSecond();
@@ -278,7 +269,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
                 throw new UnsupportedOperationException("Cannot create map with non-string key: " + BinaryTag);
             }
         });
-        return nbtCompound;
+        return nbtCompound.build();
     }
 
     public DataResult<Stream<BinaryTag>> getStream(BinaryTag BinaryTag) {
@@ -343,9 +334,10 @@ public class NbtOps implements DynamicOps<BinaryTag> {
 
     public BinaryTag remove(BinaryTag BinaryTag, String string) {
         if (BinaryTag instanceof CompoundBinaryTag nbtCompound) {
-            CompoundBinaryTag nbtCompound2 = NbtHelpers.shallowCopy(nbtCompound);
-            nbtCompound2.remove(string);
-            return nbtCompound2;
+            CompoundBinaryTag.Builder builder = CompoundBinaryTag.builder();
+            nbtCompound.stream().forEach(entry -> builder.put(entry.getKey(), entry.getValue()));
+            builder.remove(string);
+            return builder.build();
         } else {
             return BinaryTag;
         }
@@ -401,31 +393,32 @@ public class NbtOps implements DynamicOps<BinaryTag> {
         }
     }
 
-    class MapBuilder extends RecordBuilder.AbstractStringBuilder<BinaryTag, CompoundBinaryTag> {
+    class MapBuilder extends RecordBuilder.AbstractStringBuilder<BinaryTag, CompoundBinaryTag.Builder> {
         protected MapBuilder() {
             super(NbtOps.this);
         }
 
-        protected CompoundBinaryTag initBuilder() {
-            return CompoundBinaryTag.empty();
+        protected CompoundBinaryTag.Builder initBuilder() {
+            return CompoundBinaryTag.builder();
         }
 
-        protected CompoundBinaryTag append(String string, BinaryTag BinaryTag, CompoundBinaryTag nbtCompound) {
-            nbtCompound.put(string, BinaryTag);
-            return nbtCompound;
+        protected CompoundBinaryTag.Builder append(String string, BinaryTag tag, CompoundBinaryTag.Builder builder) {
+            builder.put(string, tag);
+            return builder;
         }
 
-        protected DataResult<BinaryTag> build(CompoundBinaryTag nbtCompound, BinaryTag BinaryTag) {
-            if (BinaryTag != null && BinaryTag != EndBinaryTag.endBinaryTag()) {
-                if (!(BinaryTag instanceof CompoundBinaryTag nbtCompound2)) {
-                    return DataResult.error(() -> "mergeToMap called with not a map: " + BinaryTag, BinaryTag);
+        protected DataResult<BinaryTag> build(CompoundBinaryTag.Builder builder, BinaryTag tag) {
+            if (tag != null && tag != EndBinaryTag.endBinaryTag()) {
+                if (tag instanceof CompoundBinaryTag compoundTag) {
+                    CompoundBinaryTag.Builder resultTag = CompoundBinaryTag.builder();
+                    compoundTag.stream().forEach((entry) -> resultTag.put(entry.getKey(), entry.getValue()));
+                    builder.build().stream().forEach((entry) -> resultTag.put(entry.getKey(), entry.getValue()));
+                    return DataResult.success(resultTag.build());
                 } else {
-                    CompoundBinaryTag nbtCompound3 = NbtHelpers.shallowCopy(nbtCompound2);
-                    NbtHelpers.entrySet(nbtCompound).forEach(nbtCompound3::put);
-                    return DataResult.success(nbtCompound3);
+                    return DataResult.error(() -> "mergeToMap called with not a map: " + tag, tag);
                 }
             } else {
-                return DataResult.success(nbtCompound);
+                return DataResult.success(builder.build());
             }
         }
     }
@@ -433,11 +426,11 @@ public class NbtOps implements DynamicOps<BinaryTag> {
     interface Merger {
         Merger merge(BinaryTag nbt);
 
-        default Merger merge(Iterable<BinaryTag> nbts) {
+        default Merger merge(Iterable<BinaryTag> tags) {
             Merger merger = this;
 
-            for(BinaryTag BinaryTag : nbts) {
-                merger = merger.merge(BinaryTag);
+            for (BinaryTag tag : tags) {
+                merger = merger.merge(tag);
             }
 
             return merger;
@@ -452,7 +445,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
     }
 
     static class CompoundListMerger implements Merger {
-        private final ListBinaryTag list = ListBinaryTag.from(new ArrayList<>());
+        private final ListBinaryTag.Builder<BinaryTag> list = ListBinaryTag.builder();
 
         CompoundListMerger() {
         }
@@ -479,7 +472,7 @@ public class NbtOps implements DynamicOps<BinaryTag> {
         }
 
         public BinaryTag getResult() {
-            return this.list;
+            return this.list.build();
         }
     }
 
