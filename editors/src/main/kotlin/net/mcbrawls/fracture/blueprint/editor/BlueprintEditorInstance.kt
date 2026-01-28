@@ -85,6 +85,15 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                     }
                 }
 
+                $$"$remove" -> {
+                    player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
+                        getEntityByUuid(uuid)?.let { entity ->
+                            entity.remove()
+                            player.sendActionBar(Component.text("Removed anchor"))
+                        }
+                    }
+                }
+
                 else -> shouldReturn = false
             }
 
@@ -118,18 +127,20 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             setActiveAnchor(player, uuid, AnchorModType.DATA)
         }
 
-        // TODO decorations placement
         node.addListener(PlayerUseItemOnBlockEvent::class.java) { event ->
-            if (event.itemStack.material() == Material.STICK) {
-                val player = event.player
-                val point = event.position.add(event.cursorPosition)
-                val playerPosition = player.position
-                val position = Pos(point, playerPosition.yaw, playerPosition.pitch)
+            val player = event.player
+            val point = event.position.add(event.cursorPosition)
+            val playerPosition = player.position
+            val position = Pos(point, playerPosition.yaw, playerPosition.pitch)
 
-                val anchorPos = Vec3d(position.x, position.y, position.z)
-                val anchorRot = Vec2f(position.yaw, position.pitch)
+            val anchorPos = Vec3d(position.x, position.y, position.z)
+            val anchorRot = Vec2f(position.yaw, position.pitch)
 
-                spawnAnchor("decoration", Anchor(anchorPos, anchorRot, Optional.of("fracture:jump_pad")))
+            // TODO decorations placement
+            when (event.itemStack.material()) {
+                Material.STICK -> spawnAnchor("decoration", Anchor(anchorPos, anchorRot, Optional.of("fracture:jump_pad")))
+                Material.WOODEN_HOE -> spawnAnchor(UUID.randomUUID().toString(), Anchor(anchorPos, anchorRot, Optional.empty()))
+                else -> {}
             }
         }
 
