@@ -1,6 +1,7 @@
 package net.mcbrawls.fracture.blueprint.editor
 
 import net.kyori.adventure.key.Key
+import net.kyori.adventure.text.Component
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.fracture.command.AbstractCommand
@@ -53,5 +54,6 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
 
     private fun executeSave(player: Player, instance: BlueprintEditorInstance) {
         BlueprintEditorHandler.save(instance)
+        player.sendMessage(Component.text("Saved blueprint: ${instance.blueprintId}"))
     }
 }
