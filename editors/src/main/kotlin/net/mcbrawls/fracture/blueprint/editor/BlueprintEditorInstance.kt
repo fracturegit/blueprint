@@ -19,6 +19,7 @@ import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.encodeQuick
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
+import net.minestom.server.entity.Entity
 import net.minestom.server.entity.Player
 import net.minestom.server.event.EventNode
 import net.minestom.server.event.entity.EntityAttackEvent
@@ -139,7 +140,10 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             // TODO decorations placement
             when (event.itemStack.material()) {
                 Material.STICK -> spawnAnchor("decoration", Anchor(anchorPos, anchorRot, Optional.of("fracture:jump_pad")))
-                Material.WOODEN_HOE -> spawnAnchor(UUID.randomUUID().toString(), Anchor(anchorPos, anchorRot, Optional.empty()))
+                Material.WOODEN_HOE -> {
+                    val entity = spawnAnchor(UUID.randomUUID().toString(), Anchor(anchorPos, anchorRot, Optional.empty()))
+                    setActiveAnchor(player, entity.uuid, AnchorModType.ID)
+                }
                 else -> {}
             }
         }
@@ -175,28 +179,28 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
     }
 
-    private fun spawnAnchor(id: String, anchor: Anchor) {
-        when (id) {
+    private fun spawnAnchor(id: String, anchor: Anchor): Entity {
+        return when (id) {
             "decoration" -> {
-                runCatching {
+                try {
                     val data = anchor.data.orElse("")
                     val key = Key.key(data)
                     val entity = DecorationAnchorEntity(key)
                     entity.setInstance(this, anchor.combinedPos)
-                }.onFailure {
+                    entity
+                } catch (_: Throwable) {
                     spawnDefaultAnchor(id, anchor)
                 }
             }
 
-            else -> {
-                spawnDefaultAnchor(id, anchor)
-            }
+            else -> spawnDefaultAnchor(id, anchor)
         }
     }
 
-    private fun spawnDefaultAnchor(id: String, anchor: Anchor) {
+    private fun spawnDefaultAnchor(id: String, anchor: Anchor): AnchorEntity {
         val entity = AnchorEntity(id, anchor)
         entity.setInstance(this, anchor.combinedPos)
+        return entity
     }
 
     private fun setActiveAnchor(player: Player, uuid: UUID, type: AnchorModType) {
