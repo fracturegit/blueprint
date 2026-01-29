@@ -86,6 +86,15 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                     }
                 }
 
+                $$"$removedata" -> {
+                    player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
+                        (getEntityByUuid(uuid) as? AnchorEntity)?.let { entity ->
+                            entity.anchorData = null
+                            entity.updateNametag()
+                        }
+                    }
+                }
+
                 $$"$remove" -> {
                     player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
                         getEntityByUuid(uuid)?.let { entity ->
