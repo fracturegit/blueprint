@@ -18,7 +18,7 @@ data class Anchor(
             instance.group(
                 Vec3d.CODEC.fieldOf("position").forGetter(Anchor::position),
                 Vec2f.CODEC.fieldOf("rotation").forGetter(Anchor::rotation),
-                Codec.STRING.optionalFieldOf("data").orElseGet(Optional<String>::empty).forGetter(Anchor::data),
+                Codec.STRING.optionalFieldOf("data").forGetter(Anchor::data),
             ).apply(instance, ::Anchor)
         }
 
