@@ -1,6 +1,7 @@
 package net.mcbrawls.blueprint
 
 import net.mcbrawls.blueprint.box.BlockBox
+import net.mcbrawls.blueprint.box.VecBox
 import net.mcbrawls.blueprint.state.PalettedState
 import org.joml.Vector3d
 import org.joml.Vector3ic
@@ -11,6 +12,11 @@ data class PlacedBlueprint<T>(
     val position: Vector3ic,
 ) {
     val blockBox: BlockBox = BlockBox(position, position.plus(blueprint.size))
+
+    fun getRegion(id: String): VecBox? {
+        val region = blueprint.regions[id] ?: return null
+        return region.offset(Vector3d(position))
+    }
 
     fun getAllAnchors(): List<Pair<String, Anchor>> {
         return blueprint.anchors.map { (id, anchor) -> id to offsetAnchor(anchor) }

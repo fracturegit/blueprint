@@ -8,7 +8,7 @@ import org.joml.Vector3dc
 import org.joml.minus
 import org.joml.plus
 
-class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double>() {
+class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double, VecBox>() {
     override val min: Vector3dc
     override val max: Vector3dc
 
@@ -19,6 +19,12 @@ class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double>() {
     }
 
     override val center: Vector3dc = min + (max - min) / 2.0
+
+    override fun offset(vec: Vector3dc): VecBox {
+        val newMin = min + vec
+        val newMax = max + vec
+        return VecBox(newMin, newMax)
+    }
 
     override fun contains(x: Double, y: Double, z: Double): Boolean {
         return x in min.x()..max.x() &&
