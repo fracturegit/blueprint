@@ -36,6 +36,10 @@ class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double, VecBox>() {
         return contains(vec.x(), vec.y(), vec.z())
     }
 
+    override fun toString(): String {
+        return "Box{$min, $max}"
+    }
+
     companion object {
         val CODEC: Codec<VecBox> = RecordCodecBuilder.create { instance ->
             instance.group(

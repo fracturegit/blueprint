@@ -56,7 +56,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
     private val bounds = Bounds()
 
-    private val regionHandler = InstanceRegionHandler(this, blueprint.regions)
+    private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint.regions)
 
     fun initializeInternal() {
         placedBlueprint = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
@@ -376,7 +376,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             anchors.add(id to anchor)
         }
 
-        val blueprint = Blueprint(palette, palettedStates, anchors, regionHandler.collectRegions())
+        val blueprint = Blueprint(palette, palettedStates, anchors, regionHandler.collectRegions(min))
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
             file.outputStream().use {

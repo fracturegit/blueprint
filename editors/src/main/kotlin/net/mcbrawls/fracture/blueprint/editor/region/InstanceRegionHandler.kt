@@ -6,6 +6,7 @@ import net.kyori.adventure.text.format.TextDecoration
 import net.mcbrawls.blueprint.box.VecBox
 import net.mcbrawls.fracture.blueprint.editor.BlueprintEditorInstance
 import net.minestom.server.color.Color
+import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Vec
 import net.minestom.server.entity.Entity
 import net.minestom.server.entity.EntityType
@@ -23,11 +24,15 @@ import java.util.UUID
 /**
  * Manages the creation and visualization of regions in the blueprint editor.
  */
-class InstanceRegionHandler(private val instance: BlueprintEditorInstance, regions: Map<String, VecBox>) {
+class InstanceRegionHandler(private val instance: BlueprintEditorInstance, root: BlockVec, regions: Map<String, VecBox>) {
     private val creationSessions: MutableMap<UUID, RegionSession> = mutableMapOf()
     private val playerParticleSettings: MutableMap<UUID, Boolean> = mutableMapOf()
     private var particleUpdateTick: Long = 0
-    private val regions: MutableMap<String, VecBox> = regions.toMutableMap()
+
+    private val regions: MutableMap<String, VecBox> = regions
+        .mapValues { (_, box) -> box.offset(Vector3d(root.x(), root.y(), root.z())) }
+        .toMutableMap()
+
     private val regionDisplays: MutableMap<String, RegionEntity> = mutableMapOf()
 
     fun initialize() {
@@ -268,8 +273,8 @@ class InstanceRegionHandler(private val instance: BlueprintEditorInstance, regio
         player.sendPacket(packet)
     }
 
-    fun collectRegions(): Map<String, VecBox> {
-        return regions.toMap()
+    fun collectRegions(min: BlockVec): Map<String, VecBox> {
+        return regions.mapValues { (_, box) -> box.offset(Vector3d(-min.x(), -min.y(), -min.z())) }
     }
 
     /**
