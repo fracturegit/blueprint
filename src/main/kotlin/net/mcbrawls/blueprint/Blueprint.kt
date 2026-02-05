@@ -2,28 +2,33 @@ package net.mcbrawls.blueprint
 
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
+import net.mcbrawls.blueprint.box.VecBox
+import net.mcbrawls.blueprint.state.PalettedState
+import net.mcbrawls.blueprint.state.State
+import org.joml.Vector3i
+import org.joml.Vector3ic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
-import java.util.function.Consumer
 
 data class Blueprint<T>(
     val palette: List<T>,
     val palettedStates: List<PalettedState>,
     val anchors: List<Pair<String, Anchor>>,
+    val regions: Map<String, VecBox>,
 ) {
     /**
      * The size of the blueprint.
      */
-    val size: Vec3i = calculateBlueprintSize(palettedStates.map(PalettedState::pos))
+    val size: Vector3ic = calculateBlueprintSize(palettedStates.map(PalettedState::pos))
 
-    fun forEach(action: (Vec3i, T) -> Unit) {
+    fun forEach(action: (Vector3ic, T) -> Unit) {
         palettedStates.forEach { (offset, index) ->
             val state = palette[index]
             action.invoke(offset, state)
         }
     }
 
-    fun forEachPosition(action: (Vec3i) -> Unit) {
+    fun forEachPosition(action: (Vector3ic) -> Unit) {
         palettedStates.map(PalettedState::pos).forEach(action)
     }
 
@@ -39,30 +44,10 @@ data class Blueprint<T>(
          */
         fun <T> createCodec(to: (State) -> T, from: (T) -> State): Codec<Blueprint<T>> = RecordCodecBuilder.create { instance ->
             instance.group(
-                State.CODEC
-                    .orElse(Consumer { error ->
-                        logger.error("Could not load blockstate: $error")
-                    }, State.empty)
-                    .xmap(to, from)
-                    .listOf()
-                    .fieldOf("palette")
-                    .forGetter(Blueprint<T>::palette),
-                PalettedState.CODEC.listOf()
-                    .fieldOf("block_states")
-                    .forGetter(Blueprint<T>::palettedStates),
-                /*BlueprintBlockEntity.CODEC.listOf()
-                    .fieldOf("block_entities")
-                    .xmap({ entry -> entry.associateBy(BlueprintBlockEntity::blockPos) }, { map -> map.values.toList() })
-                    .orElse(emptyMap())
-                    .forGetter(Blueprint::blockEntities),*/
-                /*Codec.unboundedMap(Codec.STRING, SerializableRegion.CODEC)
-                    .fieldOf("regions")
-                    .orElse(emptyMap())
-                    .forGetter(Blueprint::regions),*/
-                Anchor.LEGACY_LIST_CODEC
-                    .fieldOf("anchors")
-                    .orElse(emptyList())
-                    .forGetter(Blueprint<T>::anchors),
+                State.CODEC.xmap(to, from).listOf().fieldOf("palette").forGetter(Blueprint<T>::palette),
+                PalettedState.CODEC.listOf().fieldOf("block_states").forGetter(Blueprint<T>::palettedStates),
+                Anchor.LEGACY_LIST_CODEC.optionalFieldOf("anchors", emptyList()).forGetter(Blueprint<T>::anchors),
+                Codec.unboundedMap(Codec.STRING, VecBox.CODEC).optionalFieldOf("regions", emptyMap()).forGetter(Blueprint<T>::regions),
             ).apply(instance, ::Blueprint)
         }
 
@@ -70,20 +55,20 @@ data class Blueprint<T>(
          * Calculates the size of a blueprint from its positions.
          * @return the blueprint size
          */
-        fun calculateBlueprintSize(positions: List<Vec3i>): Vec3i {
+        fun calculateBlueprintSize(positions: List<Vector3ic>): Vector3i {
             if (positions.isEmpty()) {
-                return Vec3i.ZERO
+                return Vector3i()
             }
 
-            val minX = positions.minOf { it.x }
-            val minY = positions.minOf { it.y }
-            val minZ = positions.minOf { it.z }
+            val minX = positions.minOf { it.x() }
+            val minY = positions.minOf { it.y() }
+            val minZ = positions.minOf { it.z() }
 
-            val maxX = positions.maxOf { it.x }
-            val maxY = positions.maxOf { it.y }
-            val maxZ = positions.maxOf { it.z }
+            val maxX = positions.maxOf { it.x() }
+            val maxY = positions.maxOf { it.y() }
+            val maxZ = positions.maxOf { it.z() }
 
-            return Vec3i(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1)
+            return Vector3i(maxX - minX + 1, maxY - minY + 1, maxZ - minZ + 1)
         }
     }
 }

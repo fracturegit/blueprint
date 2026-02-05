@@ -1,8 +1,7 @@
-@file:Suppress("UnstableApiUsage")
-
-package net.mcbrawls.fracture.blueprint.editor
+package net.mcbrawls.fracture.blueprint.editor.anchor
 
 import net.kyori.adventure.key.Key
+import net.mcbrawls.fracture.blueprint.editor.BlueprintEditorInstance
 import net.minestom.server.color.DyeColor
 import net.minestom.server.component.DataComponents
 import net.minestom.server.entity.Entity
@@ -33,9 +32,21 @@ class DecorationAnchorEntity(var modelKey: Key) : Entity(EntityType.INTERACTION)
 
     override fun update(time: Long) {
         viewers.forEach { player ->
-            val isModifying = player.getTag(BlueprintEditorInstance.ACTIVE_ANCHOR_TAG) == uuid
+            val isModifying = player.getTag(BlueprintEditorInstance.Companion.ACTIVE_ANCHOR_TAG) == uuid
             val color = if (isModifying) DyeColor.ORANGE else DyeColor.RED
-            player.sendPacket(ParticlePacket(Particle.DUST.withProperties(color, 0.5f), position.x, position.y + boundingBox.height() / 2, position.z, 0.0f, 0.0f, 0.0f, 0.0f, 1))
+            player.sendPacket(
+                ParticlePacket(
+                    Particle.DUST.withProperties(color, 0.5f),
+                    position.x,
+                    position.y + boundingBox.height() / 2,
+                    position.z,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    0.0f,
+                    1
+                )
+            )
         }
     }
 

@@ -1,8 +1,10 @@
-package net.mcbrawls.blueprint
+package net.mcbrawls.blueprint.state
 
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
+import net.mcbrawls.blueprint.Blueprint.Companion.logger
 import java.util.Optional
+import java.util.function.Consumer
 
 data class State(
     val blockId: String,
@@ -17,7 +19,7 @@ data class State(
                     .xmap({ statex -> statex.orElse(emptyMap()) }, Optional<State>::of)
                     .forGetter(State::properties),
             ).apply(instance, ::State)
-        }
+        }.orElseGet(Consumer { error -> logger.error("Could not load blockstate: $error") }, State::empty)
 
         val empty = State("minecraft:air")
     }

@@ -3,14 +3,14 @@ package net.mcbrawls.blueprint.minestom
 import com.mojang.serialization.Codec
 import net.kyori.adventure.key.Key
 import net.mcbrawls.blueprint.Blueprint
-import net.mcbrawls.blueprint.BlueprintSerializer
 import net.mcbrawls.blueprint.PlacedBlueprint
-import net.mcbrawls.blueprint.State
-import net.mcbrawls.blueprint.Vec3i
+import net.mcbrawls.blueprint.serialization.BlueprintSerializer
+import net.mcbrawls.blueprint.state.State
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Point
 import net.minestom.server.instance.Instance
 import net.minestom.server.instance.block.Block
+import org.joml.Vector3i
 import java.io.File
 
 open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: String? = null) : BlueprintSerializer<Block>(CODEC, folderRoot) {
@@ -32,10 +32,10 @@ open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: S
 
         fun placeBlueprint(instance: Instance, point: BlockVec, blueprint: Blueprint<Block>): PlacedBlueprint<Block> {
             blueprint.forEach { offset, block ->
-                placePosition(instance, point.add(BlockVec(offset.x, offset.y, offset.z)), block)
+                placePosition(instance, point.add(BlockVec(offset.x(), offset.y(), offset.z())), block)
             }
 
-            return PlacedBlueprint(blueprint, Vec3i(point.blockX, point.blockY, point.blockZ))
+            return PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ))
         }
 
         fun placePosition(instance: Instance, point: Point, block: Block) {
@@ -43,8 +43,8 @@ open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: S
         }
 
         fun clear(instance: Instance, placedBlueprint: PlacedBlueprint<Block>) {
-            placedBlueprint.forEachPosition { (x, y, z) ->
-                placePosition(instance, BlockVec(x, y, z), Block.AIR)
+            placedBlueprint.forEachPosition { pos ->
+                placePosition(instance, BlockVec(pos.x(), pos.y(), pos.z()), Block.AIR)
             }
         }
 

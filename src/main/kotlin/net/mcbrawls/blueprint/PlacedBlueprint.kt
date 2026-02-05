@@ -1,10 +1,16 @@
 package net.mcbrawls.blueprint
 
+import net.mcbrawls.blueprint.box.BlockBox
+import net.mcbrawls.blueprint.state.PalettedState
+import org.joml.Vector3d
+import org.joml.Vector3ic
+import org.joml.plus
+
 data class PlacedBlueprint<T>(
     val blueprint: Blueprint<T>,
-    val position: Vec3i,
+    val position: Vector3ic,
 ) {
-    val box: Box = Box(position, position.plus(blueprint.size))
+    val blockBox: BlockBox = BlockBox(position, position.plus(blueprint.size))
 
     fun getAllAnchors(): List<Pair<String, Anchor>> {
         return blueprint.anchors.map { (id, anchor) -> id to offsetAnchor(anchor) }
@@ -31,10 +37,10 @@ data class PlacedBlueprint<T>(
      * Gets a given anchor offset for this placed blueprint.
      */
     fun offsetAnchor(anchor: Anchor): Anchor {
-        return Anchor(anchor.position.add(position), anchor.rotation, anchor.data)
+        return Anchor(anchor.position + Vector3d(position), anchor.rotation, anchor.data)
     }
 
-    fun forEachPosition(action: (Vec3i) -> Unit) {
+    fun forEachPosition(action: (Vector3ic) -> Unit) {
         blueprint.palettedStates
             .map(PalettedState::pos)
             .map { it + position }

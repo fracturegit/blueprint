@@ -47,7 +47,7 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
     private fun executeOpen(player: Player, blueprint: Blueprint<Block>, blueprintId: Key) {
         BlueprintEditorHandler.add(blueprint, blueprintId) { instance ->
             val size = blueprint.size
-            player.setInstance(instance, BlueprintEditorInstance.ORIGIN.asPos().add(size.x / 2.0, size.y / 2.0, size.z / 2.0)).join()
+            player.setInstance(instance, BlueprintEditorInstance.ORIGIN.asPos().add(size.x() / 2.0, size.y() / 2.0, size.z() / 2.0)).join()
             player.gameMode = GameMode.SPECTATOR
         }
     }

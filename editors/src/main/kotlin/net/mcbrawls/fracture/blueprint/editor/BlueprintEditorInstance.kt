@@ -5,22 +5,25 @@ import net.kyori.adventure.nbt.BinaryTagIO
 import net.kyori.adventure.nbt.CompoundBinaryTag
 import net.kyori.adventure.sound.Sound
 import net.kyori.adventure.text.Component
+import net.kyori.adventure.text.format.NamedTextColor
 import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
-import net.mcbrawls.blueprint.Box
-import net.mcbrawls.blueprint.PalettedState
 import net.mcbrawls.blueprint.PlacedBlueprint
-import net.mcbrawls.blueprint.Vec2f
-import net.mcbrawls.blueprint.Vec3d
-import net.mcbrawls.blueprint.Vec3i
+import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
+import net.mcbrawls.blueprint.state.PalettedState
 import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.encodeQuick
+import net.mcbrawls.fracture.blueprint.editor.anchor.AnchorEntity
+import net.mcbrawls.fracture.blueprint.editor.anchor.AnchorModType
+import net.mcbrawls.fracture.blueprint.editor.anchor.DecorationAnchorEntity
+import net.mcbrawls.fracture.blueprint.editor.region.InstanceRegionHandler
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
 import net.minestom.server.entity.Entity
 import net.minestom.server.entity.Player
+import net.minestom.server.entity.PlayerHand
 import net.minestom.server.event.EventNode
 import net.minestom.server.event.entity.EntityAttackEvent
 import net.minestom.server.event.instance.RemoveEntityFromInstanceEvent
@@ -36,6 +39,10 @@ import net.minestom.server.item.Material
 import net.minestom.server.sound.SoundEvent
 import net.minestom.server.tag.Tag
 import net.minestom.server.world.DimensionType
+import org.joml.Vector2f
+import org.joml.Vector3d
+import org.joml.Vector3i
+import org.joml.Vector3ic
 import java.io.File
 import java.util.Optional
 import java.util.UUID
@@ -49,19 +56,27 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
     private val bounds = Bounds()
 
+    private val regionHandler = InstanceRegionHandler(this, blueprint.regions)
+
     fun initializeInternal() {
         placedBlueprint = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
 
         placedBlueprint.getAllAnchors().forEach { (id, anchor) ->
             spawnAnchor(id, anchor)
         }
+
+        regionHandler.initialize()
     }
 
     fun initializeEvents(node: EventNode<InstanceEvent>) {
         node.addListener(RemoveEntityFromInstanceEvent::class.java) { event ->
             val player = event.entity as? Player ?: return@addListener
+
+            regionHandler.removePlayer(player)
+
             player.removeTag(ACTIVE_ANCHOR_TAG)
             player.removeTag(ANCHOR_MOD_TYPE_TAG)
+            player.removeTag(ACTIVE_REGION_TAG)
         }
 
         node.addListener(PlayerChatEvent::class.java) { event ->
@@ -70,12 +85,31 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             val player = event.player
             val str = event.rawMessage
 
+            if (regionHandler.hasActiveCreationSession(player)) {
+                if (str.startsWith("$")) {
+                    // Check for region-specific commands
+                    when (str) {
+                        $$"$region cancel" -> {
+                            regionHandler.cancelCreation(player)
+                        }
+                    }
+                } else {
+                    // Treat as region ID
+                    if (regionHandler.confirmRegion(player, str)) {
+                        regionHandler.exitCreationMode(player)
+                    }
+                }
+
+                return@addListener
+            }
+
             var shouldReturn = true
             when (str) {
                 $$"$clear" -> {
                     player.removeTag(ACTIVE_ANCHOR_TAG)
                     player.removeTag(ANCHOR_MOD_TYPE_TAG)
-                    player.sendActionBar(Component.text("Cleared active anchor mod"))
+                    player.removeTag(ACTIVE_REGION_TAG)
+                    player.sendActionBar(Component.text("Cleared active selection"))
                 }
 
                 $$"$teleport" -> {
@@ -102,12 +136,43 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                             player.sendActionBar(Component.text("Removed anchor"))
                         }
                     }
+
+                    player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
+                        regionHandler.deleteRegion(regionId)
+                        player.removeTag(ACTIVE_REGION_TAG)
+                        player.sendActionBar(Component.text("Deleted region '$regionId'", NamedTextColor.RED))
+                    }
+                }
+
+                $$"$region create" -> {
+                    regionHandler.enterCreationMode(player)
+                    shouldReturn = true
+                }
+
+                $$"$region exit" -> {
+                    regionHandler.exitCreationMode(player)
+                    shouldReturn = true
+                }
+
+                $$"$region toggle" -> {
+                    val enabled = regionHandler.togglePlayerParticleVisualization(player)
+                    val status = if (enabled) "enabled" else "disabled"
+                    player.sendActionBar(Component.text("Region particles $status"))
+                    shouldReturn = true
                 }
 
                 else -> shouldReturn = false
             }
 
             if (shouldReturn) return@addListener
+
+            // Handle region ID modification
+            player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
+                regionHandler.renameRegion(regionId, str)
+                player.setTag(ACTIVE_REGION_TAG, str)
+                player.sendActionBar(Component.text("Renamed region to '$str'"))
+                return@addListener
+            }
 
             player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
                 player.getTag(ANCHOR_MOD_TYPE_TAG)?.let { modType ->
@@ -125,9 +190,19 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
         node.addListener(PlayerEntityInteractEvent::class.java) { event ->
             val player = event.player
-            val entity = event.target as? AnchorEntity ?: return@addListener
-            val uuid = entity.uuid
-            setActiveAnchor(player, uuid, AnchorModType.ID)
+            val entity = event.target
+
+            // Handle region selection
+            if (entity is InstanceRegionHandler.RegionEntity) {
+                setActiveRegion(player, entity.regionId)
+                return@addListener
+            }
+
+            // Handle anchor selection
+            (entity as? AnchorEntity)?.let { anchorEntity ->
+                val uuid = anchorEntity.uuid
+                setActiveAnchor(player, uuid, AnchorModType.ID)
+            }
         }
 
         node.addListener(EntityAttackEvent::class.java) { event ->
@@ -138,13 +213,21 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
 
         node.addListener(PlayerUseItemOnBlockEvent::class.java) { event ->
+            if (event.hand == PlayerHand.OFF) return@addListener
+
             val player = event.player
             val point = event.position.add(event.cursorPosition)
             val playerPosition = player.position
             val position = Pos(point, playerPosition.yaw, playerPosition.pitch)
 
-            val anchorPos = Vec3d(position.x, position.y, position.z)
-            val anchorRot = Vec2f(position.yaw, position.pitch)
+            if (regionHandler.hasActiveCreationSession(player)) {
+                val regionPos = Vector3d(point.x(), point.y(), point.z())
+                regionHandler.setPosition(player, regionPos)
+                return@addListener
+            }
+
+            val anchorPos = Vector3d(position.x, position.y, position.z)
+            val anchorRot = Vector2f(position.yaw, position.pitch)
 
             // TODO decorations placement
             when (event.itemStack.material()) {
@@ -215,8 +298,18 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     private fun setActiveAnchor(player: Player, uuid: UUID, type: AnchorModType) {
         if (player.getTag(ANCHOR_MOD_TYPE_TAG) == type && player.getTag(ACTIVE_ANCHOR_TAG) == uuid) return
 
+        player.removeTag(ACTIVE_REGION_TAG)
         player.setTag(ACTIVE_ANCHOR_TAG, uuid)
         player.setTag(ANCHOR_MOD_TYPE_TAG, type)
+        player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
+    }
+
+    private fun setActiveRegion(player: Player, regionId: String) {
+        if (player.getTag(ACTIVE_REGION_TAG) == regionId) return
+
+        player.removeTag(ACTIVE_ANCHOR_TAG)
+        player.removeTag(ANCHOR_MOD_TYPE_TAG)
+        player.setTag(ACTIVE_REGION_TAG, regionId)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
     }
 
@@ -229,6 +322,8 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
         if (!initialized) return
 
+        regionHandler.tick()
+
         if (players.isEmpty()) {
             BlueprintEditorHandler.remove(this)
             return
@@ -237,6 +332,10 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         players.forEach { player ->
             player.getTag(ANCHOR_MOD_TYPE_TAG)?.let { tag ->
                 player.sendActionBar(Component.text("Modifying anchor: $tag"))
+            }
+
+            player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
+                player.sendActionBar(Component.text("Modifying region: $regionId"))
             }
         }
     }
@@ -264,7 +363,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             }
 
             // create paletted state
-            val derivedPosition = Vec3i(position.x - min.blockX, position.y - min.blockY, position.z - min.blockZ)
+            val derivedPosition = Vector3i(position.x() - min.blockX, position.y() - min.blockY, position.z() - min.blockZ)
             val paletteId = palette.indexOf(block)
             palettedStates.add(PalettedState(derivedPosition, paletteId))
         }
@@ -277,7 +376,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             anchors.add(id to anchor)
         }
 
-        val blueprint = Blueprint(palette, palettedStates, anchors)
+        val blueprint = Blueprint(palette, palettedStates, anchors, regionHandler.collectRegions())
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
             file.outputStream().use {
@@ -286,17 +385,17 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
     }
 
-    fun getBlocks(): Map<Vec3i, Block> {
+    fun getBlocks(): Map<Vector3ic, Block> {
         val min = bounds.min
         val max = bounds.max
-        val box = Box(
-            Vec3i(min.blockX, min.blockY, min.blockZ),
-            Vec3i(max.blockX, max.blockY, max.blockZ),
+        val box = BlockBox(
+            Vector3i(min.blockX, min.blockY, min.blockZ),
+            Vector3i(max.blockX, max.blockY, max.blockZ),
         )
 
         return buildMap {
             box.forEach { position ->
-                val block = getBlock(position.x, position.y, position.z)
+                val block = getBlock(position.x(), position.y(), position.z())
 
                 if (block.isAir) return@forEach
 
@@ -331,5 +430,6 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
         val ACTIVE_ANCHOR_TAG: Tag<UUID> = Tag.UUID("active_anchor")
         val ANCHOR_MOD_TYPE_TAG: Tag<AnchorModType> = Tag.Transient("anchor_mod_type")
+        val ACTIVE_REGION_TAG: Tag<String> = Tag.String("active_region")
     }
 }

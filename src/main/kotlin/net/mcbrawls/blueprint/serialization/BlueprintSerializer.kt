@@ -1,7 +1,8 @@
-package net.mcbrawls.blueprint
+package net.mcbrawls.blueprint.serialization
 
 import com.mojang.serialization.Codec
 import net.kyori.adventure.nbt.BinaryTagIO
+import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.decodeQuick
 import org.slf4j.Logger
@@ -15,7 +16,7 @@ import kotlin.time.measureTime
 open class BlueprintSerializer<T>(
     /**
      * The codec to serialize blueprints.
-     * @see Blueprint.createCodec
+     * @see net.mcbrawls.blueprint.Blueprint.Companion.createCodec
      */
     val codec: Codec<Blueprint<T>>,
 
@@ -46,7 +47,8 @@ open class BlueprintSerializer<T>(
                         val key = "$namespace:$path"
 
                         val tag = BinaryTagIO.unlimitedReader().read(file.inputStream(), BinaryTagIO.Compression.GZIP)
-                        val blueprint = codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Could not parse blueprint: $key")
+                        val blueprint =
+                            codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Could not parse blueprint: $key")
                         blueprints[key] = blueprint
                     }
                 }
