@@ -1,4 +1,4 @@
-package net.mcbrawls.fracture.blueprint.editor.region
+package net.mcbrawls.blueprint.editor.region
 
 /**
  * Represents a colored dust particle for visualization.

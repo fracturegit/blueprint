@@ -1,10 +1,10 @@
-package net.mcbrawls.fracture.blueprint.editor.region
+package net.mcbrawls.blueprint.editor.region
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.kyori.adventure.text.format.TextDecoration
 import net.mcbrawls.blueprint.box.VecBox
-import net.mcbrawls.fracture.blueprint.editor.BlueprintEditorInstance
+import net.mcbrawls.blueprint.editor.BlueprintEditorInstance
 import net.minestom.server.color.Color
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Vec

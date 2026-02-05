@@ -1,7 +1,7 @@
-package net.mcbrawls.fracture.blueprint.editor.anchor
+package net.mcbrawls.blueprint.editor.anchor
 
 import net.kyori.adventure.key.Key
-import net.mcbrawls.fracture.blueprint.editor.BlueprintEditorInstance
+import net.mcbrawls.blueprint.editor.BlueprintEditorInstance
 import net.minestom.server.color.DyeColor
 import net.minestom.server.component.DataComponents
 import net.minestom.server.entity.Entity

@@ -1,4 +1,4 @@
-package net.mcbrawls.fracture.blueprint.editor
+package net.mcbrawls.blueprint.editor
 
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.text.Component
@@ -27,7 +27,7 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
             playerExecutor { player, context ->
                 val blueprintId = context[blueprintArg]
                 val blueprintKey = Key.key(blueprintId)
-                val blueprint = serializer[blueprintKey] ?: error("No blueprint: $blueprintKey")
+                val blueprint = serializer[blueprintKey]
                 executeOpen(player, blueprint, blueprintKey)
             }
         }
@@ -44,12 +44,18 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
         }
     }
 
-    private fun executeOpen(player: Player, blueprint: Blueprint<Block>, blueprintId: Key) {
+    private fun executeOpen(player: Player, blueprint: Blueprint<Block>?, blueprintId: Key) {
         BlueprintEditorHandler.add(blueprint, blueprintId) { instance ->
-            val size = blueprint.size
-            player.setInstance(instance, BlueprintEditorInstance.ORIGIN.asPos().add(size.x() / 2.0, size.y() / 2.0, size.z() / 2.0)).join()
+            val rootPos = BlueprintEditorInstance.ORIGIN.asPos()
+            val pos = blueprint?.size?.let { size ->
+                rootPos.add(size.x() / 2.0, size.y() / 2.0, size.z() / 2.0)
+            } ?: rootPos
+
+            player.setInstance(instance, pos).join()
             player.gameMode = GameMode.SPECTATOR
         }
+
+        player.sendMessage("Opening blueprint editor: $blueprintId")
     }
 
     private fun executeSave(player: Player, instance: BlueprintEditorInstance) {

@@ -1,4 +1,4 @@
-package net.mcbrawls.fracture.blueprint.editor
+package net.mcbrawls.blueprint.editor
 
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,7 +20,7 @@ object BlueprintEditorHandler {
     private val instances: MutableMap<UUID, BlueprintEditorInstance> = mutableMapOf()
     private val initializingInstances: MutableList<BlueprintEditorInstance> = mutableListOf()
 
-    fun add(blueprint: Blueprint<Block>, id: Key, loadedCallback: (BlueprintEditorInstance) -> Unit) {
+    fun add(blueprint: Blueprint<Block>?, id: Key, loadedCallback: (BlueprintEditorInstance) -> Unit) {
         val instance = BlueprintEditorInstance(id, blueprint)
         instance.setChunkSupplier(::LightingChunk)
         instance.time = 12000

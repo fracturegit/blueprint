@@ -1,4 +1,4 @@
-package net.mcbrawls.fracture.blueprint.editor
+package net.mcbrawls.blueprint.editor
 
 import net.kyori.adventure.key.Key
 import net.kyori.adventure.nbt.BinaryTagIO
@@ -15,10 +15,10 @@ import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
 import net.mcbrawls.blueprint.state.PalettedState
 import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.encodeQuick
-import net.mcbrawls.fracture.blueprint.editor.anchor.AnchorEntity
-import net.mcbrawls.fracture.blueprint.editor.anchor.AnchorModType
-import net.mcbrawls.fracture.blueprint.editor.anchor.DecorationAnchorEntity
-import net.mcbrawls.fracture.blueprint.editor.region.InstanceRegionHandler
+import net.mcbrawls.blueprint.editor.anchor.AnchorEntity
+import net.mcbrawls.blueprint.editor.anchor.AnchorModType
+import net.mcbrawls.blueprint.editor.anchor.DecorationAnchorEntity
+import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
 import net.minestom.server.entity.Entity
@@ -49,23 +49,28 @@ import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 
-class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
+class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
-    private lateinit var placedBlueprint: PlacedBlueprint<Block>
+    private var placedBlueprint: PlacedBlueprint<Block>? = null
 
     private val bounds = Bounds()
 
-    private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint.regions)
+    private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
 
     fun initializeInternal() {
-        placedBlueprint = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
+        if (blueprint != null) {
+            val placed = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
+            placedBlueprint = placed
 
-        placedBlueprint.getAllAnchors().forEach { (id, anchor) ->
-            spawnAnchor(id, anchor)
+            placed.getAllAnchors().forEach { (id, anchor) ->
+                spawnAnchor(id, anchor)
+            }
+
+            regionHandler.initialize()
+        } else {
+            setBlock(ORIGIN, Block.STONE)
         }
-
-        regionHandler.initialize()
     }
 
     fun initializeEvents(node: EventNode<InstanceEvent>) {

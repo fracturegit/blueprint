@@ -1,11 +1,11 @@
 @file:Suppress("UnstableApiUsage")
 
-package net.mcbrawls.fracture.blueprint.editor.anchor
+package net.mcbrawls.blueprint.editor.anchor
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.TextDecoration
 import net.mcbrawls.blueprint.Anchor
-import net.mcbrawls.fracture.blueprint.editor.BlueprintEditorInstance
+import net.mcbrawls.blueprint.editor.BlueprintEditorInstance
 import net.minestom.server.color.DyeColor
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Vec
