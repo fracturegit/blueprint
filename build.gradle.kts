@@ -4,8 +4,6 @@ plugins {
     id("maven-publish")
 }
 
-val adventure_version: String by properties
-
 allprojects {
     apply(plugin = "kotlin")
     apply(plugin = "java")
@@ -18,9 +16,6 @@ allprojects {
         mavenCentral()
         maven("https://maven.mcbrawls.net/releases/")
         maven("https://libraries.minecraft.net/")
-    }
-
-    dependencies {
     }
 
     kotlin {
