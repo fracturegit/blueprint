@@ -15,7 +15,7 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
         addSyntax {
             requireBase()
 
-            val blueprintArg = ArgumentType.Word("blueprint").let { arg ->
+            val blueprintArg = ArgumentType.String("blueprint").let { arg ->
                 arg.setSuggestionCallback { _, _, suggestion ->
                     val blueprints = serializer.collectBlueprints()
                     suggest(blueprints.keys, suggestion)
