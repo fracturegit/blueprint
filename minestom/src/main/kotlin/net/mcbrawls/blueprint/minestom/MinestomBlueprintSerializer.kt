@@ -8,6 +8,7 @@ import net.mcbrawls.blueprint.serialization.BlueprintSerializer
 import net.mcbrawls.blueprint.state.State
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Point
+import net.minestom.server.event.EventDispatcher
 import net.minestom.server.instance.Instance
 import net.minestom.server.instance.block.Block
 import org.joml.Vector3i
@@ -35,7 +36,10 @@ open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: S
                 placePosition(instance, point.add(BlockVec(offset.x(), offset.y(), offset.z())), block)
             }
 
-            return PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ))
+            val placedBlueprint = PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ))
+            EventDispatcher.call(BlueprintPlaceEvent(instance, point, blueprint, placedBlueprint))
+
+            return placedBlueprint
         }
 
         fun placePosition(instance: Instance, point: Point, block: Block) {
