@@ -15,8 +15,10 @@ import org.joml.Vector3i
 import java.io.File
 
 open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: String? = null) : BlueprintSerializer<Block>(CODEC, folderRoot) {
+    open val name: String = this::class.simpleName ?: defaultNamespace ?: "Default Serializer"
+
     init {
-        load()
+        reload()
     }
 
     operator fun get(key: Key): Blueprint<Block>? {

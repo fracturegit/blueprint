@@ -10,7 +10,7 @@ allprojects {
     apply(plugin = "maven-publish")
 
     group = "net.mcbrawls.blueprint"
-    version = "1.0.0"
+    version = "1.1.0"
 
     repositories {
         mavenCentral()

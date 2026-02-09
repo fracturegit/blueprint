@@ -8,6 +8,7 @@ import net.mcbrawls.codex.decodeQuick
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.File
+import java.io.IOException
 import kotlin.time.measureTime
 
 /**
@@ -29,33 +30,47 @@ open class BlueprintSerializer<T>(
 
     private val blueprints: MutableMap<String, Blueprint<T>> = mutableMapOf()
 
-    fun load() {
+    fun reload(): Int {
         blueprints.clear()
 
         measureTime {
             folderRoot.walkTopDown()
                 .filter { it.isFile }
                 .forEach { file ->
-                    if (file.extension == "nbt") {
-                        val filePath = file.relativeTo(folderRoot).path
-                        val namespace = filePath.substringBefore(File.separator)
-                        val path = filePath.removeSuffix(".${file.extension}")
-                            .substringAfter(namespace)
-                            .removePrefix(File.separator)
-                            .split(File.separator)
-                            .joinToString("/")
-                        val key = "$namespace:$path"
+                    runCatching {
+                        val ext = file.extension
+                        if (ext == "nbt") {
+                            val filePath = file.relativeTo(folderRoot).path
+                            val namespace = filePath.substringBefore(File.separator)
+                            val path = extractPath(filePath, ext, namespace)
+                            val key = "$namespace:$path"
 
-                        val tag = BinaryTagIO.unlimitedReader().read(file.inputStream(), BinaryTagIO.Compression.GZIP)
-                        val blueprint =
-                            codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Could not parse blueprint: $key")
-                        blueprints[key] = blueprint
+                            runCatching {
+                                file.inputStream().use { stream ->
+                                    val reader = BinaryTagIO.unlimitedReader()
+                                    val tag = reader.read(stream, BinaryTagIO.Compression.GZIP)
+                                    val blueprint = codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Parse error: $key")
+                                    blueprints[key] = blueprint
+                                }
+                            }.onFailure { throwable ->
+                                logger.error("Failed to load blueprint: $key", throwable)
+                            }
+                        }
                     }
                 }
         }.let { duration ->
             logger.info("Loaded ${blueprints.size} blueprints in ${duration.inWholeMilliseconds} ms")
         }
+
+        return blueprints.size
     }
+
+    private fun extractPath(path: String, ext: String, namespace: String): String =
+        path.removeSuffix(".$ext")
+            .substringAfter(namespace)
+            .removePrefix(File.separator)
+            .split(File.separator)
+            .joinToString("/")
 
     open operator fun get(id: String): Blueprint<T>? {
         return blueprints[id]
