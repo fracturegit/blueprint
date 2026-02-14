@@ -8,7 +8,6 @@ import net.mcbrawls.codex.decodeQuick
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.File
-import java.io.IOException
 import kotlin.time.measureTime
 
 /**
@@ -46,12 +45,8 @@ open class BlueprintSerializer<T>(
                             val key = "$namespace:$path"
 
                             runCatching {
-                                file.inputStream().use { stream ->
-                                    val reader = BinaryTagIO.unlimitedReader()
-                                    val tag = reader.read(stream, BinaryTagIO.Compression.GZIP)
-                                    val blueprint = codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Parse error: $key")
-                                    blueprints[key] = blueprint
-                                }
+                                val blueprint = loadBlueprint(file)
+                                blueprints[key] = blueprint
                             }.onFailure { throwable ->
                                 logger.error("Failed to load blueprint: $key", throwable)
                             }
@@ -63,6 +58,27 @@ open class BlueprintSerializer<T>(
         }
 
         return blueprints.size
+    }
+
+    private fun loadBlueprint(file: File): Blueprint<T> {
+        return file.inputStream().use { stream ->
+            val reader = BinaryTagIO.unlimitedReader()
+            val tag = reader.read(stream, BinaryTagIO.Compression.GZIP)
+            codec.decodeQuick(NbtOps.INSTANCE, tag) ?: error("Parse error: $file")
+        }
+    }
+
+    fun reload(id: String): Blueprint<T>? {
+        val path = id
+            .replace(":", "/")
+            .replace("/", File.separator)
+        val file = folderRoot.resolve("$path.nbt")
+
+        if (!file.exists()) return null
+
+        val blueprint = loadBlueprint(file)
+        blueprints[id] = blueprint
+        return blueprint
     }
 
     private fun extractPath(path: String, ext: String, namespace: String): String =
