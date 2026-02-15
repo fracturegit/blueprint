@@ -14,16 +14,26 @@ import net.minestom.server.instance.block.Block
 import org.joml.Vector3i
 import java.io.File
 
-open class MinestomBlueprintSerializer(folderRoot: File, val defaultNamespace: String? = null) : BlueprintSerializer<Block>(CODEC, folderRoot) {
+open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: String? = null) : BlueprintSerializer<Block>(CODEC, folderRoot) {
     open val name: String = this::class.simpleName ?: defaultNamespace ?: "Default Serializer"
 
     operator fun get(key: Key): Blueprint<Block>? {
         return super.get(key.asString())
     }
 
+    private val namespace = defaultNamespace ?: Key.MINECRAFT_NAMESPACE
+
     override operator fun get(id: String): Blueprint<Block>? {
-        val namespace = defaultNamespace ?: Key.MINECRAFT_NAMESPACE
         return this[Key.key(namespace, id)]
+    }
+
+    fun getRaw(id: String): Blueprint<Block>? {
+        return super.get(id)
+    }
+
+    fun getDefaultedFile(id: String): File {
+        val key = Key.key(namespace, id)
+        return getFile(key.toString())
     }
 
     companion object {

@@ -69,16 +69,20 @@ open class BlueprintSerializer<T>(
     }
 
     fun reload(id: String): Blueprint<T>? {
-        val path = id
-            .replace(":", "/")
-            .replace("/", File.separator)
-        val file = folderRoot.resolve("$path.nbt")
-
+        val file = getFile(id)
         if (!file.exists()) return null
 
         val blueprint = loadBlueprint(file)
         blueprints[id] = blueprint
         return blueprint
+    }
+
+    fun getFile(id: String): File {
+        val path = id
+            .replace(":", "/")
+            .replace("/", File.separator)
+
+        return folderRoot.resolve("$path.nbt")
     }
 
     private fun extractPath(path: String, ext: String, namespace: String): String =
