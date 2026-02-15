@@ -273,8 +273,8 @@ class InstanceRegionHandler(private val instance: BlueprintEditorInstance, root:
         player.sendPacket(packet)
     }
 
-    fun collectRegions(min: BlockVec): Map<String, VecBox> {
-        return regions.mapValues { (_, box) -> box.offset(Vector3d(-min.x(), -min.y(), -min.z())) }
+    fun collectRegions(root: BlockVec): Map<String, VecBox> {
+        return regions.mapValues { (_, box) -> box.offset(Vector3d(-root.x(), -root.y(), -root.z())) }
     }
 
     /**

@@ -9,16 +9,14 @@ import net.kyori.adventure.text.format.NamedTextColor
 import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.PlacedBlueprint
-import net.mcbrawls.blueprint.box.BlockBox
-import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
-import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
-import net.mcbrawls.blueprint.state.PalettedState
-import net.mcbrawls.blueprint.util.NbtOps
-import net.mcbrawls.codex.encodeQuick
 import net.mcbrawls.blueprint.editor.anchor.AnchorEntity
 import net.mcbrawls.blueprint.editor.anchor.AnchorModType
 import net.mcbrawls.blueprint.editor.anchor.DecorationAnchorEntity
 import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
+import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
+import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
+import net.mcbrawls.blueprint.util.NbtOps
+import net.mcbrawls.codex.encodeQuick
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
 import net.minestom.server.entity.Entity
@@ -41,20 +39,16 @@ import net.minestom.server.tag.Tag
 import net.minestom.server.world.DimensionType
 import org.joml.Vector2f
 import org.joml.Vector3d
-import org.joml.Vector3i
-import org.joml.Vector3ic
 import java.io.File
 import java.util.Optional
 import java.util.UUID
-import kotlin.math.max
-import kotlin.math.min
 
 class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
     private var placedBlueprint: PlacedBlueprint<Block>? = null
 
-    private val bounds = Bounds()
+    private val bounds = Bounds(ORIGIN)
 
     private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
 
@@ -351,82 +345,24 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     }
 
     fun save(folder: File) {
+        // prepare file
         val path = "${blueprintId.namespace()}/${blueprintId.value()}"
         val file = folder.resolve("$path.nbt")
-        file.parentFile.mkdirs()
 
-        val palette = mutableListOf<Block>()
-        val palettedStates = mutableListOf<PalettedState>()
+        // create blueprint
+        val root = bounds.min
+        val blockMap = MinestomBlueprintHelper.getBlocks(this, bounds)
+        val regions = regionHandler.collectRegions(root)
+        val anchors = entities.filterIsInstance<AnchorEntity>()
+        val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, anchors, regions)
 
-        val min = bounds.min
-        val blocks = getBlocks()
-
-        // create palette
-        blocks.forEach { (position, block) ->
-            if (block !in palette) {
-                palette.add(block)
-            }
-
-            // create paletted state
-            val derivedPosition = Vector3i(position.x() - min.blockX, position.y() - min.blockY, position.z() - min.blockZ)
-            val paletteId = palette.indexOf(block)
-            palettedStates.add(PalettedState(derivedPosition, paletteId))
-        }
-
-        // create anchors
-        val anchors = mutableListOf<Pair<String, Anchor>>()
-        entities.filterIsInstance<AnchorEntity>().forEach { anchorEntity ->
-            val id = anchorEntity.anchorId
-            val anchor = anchorEntity.createAnchor(min)
-            anchors.add(id to anchor)
-        }
-
-        val blueprint = Blueprint(palette, palettedStates, anchors, regionHandler.collectRegions(min))
+        // serialize
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
+            file.parentFile.mkdirs()
             file.outputStream().use {
                 BinaryTagIO.writer().write(tag, it, BinaryTagIO.Compression.GZIP)
             }
-        }
-    }
-
-    fun getBlocks(): Map<Vector3ic, Block> {
-        val min = bounds.min
-        val max = bounds.max
-        val box = BlockBox(
-            Vector3i(min.blockX, min.blockY, min.blockZ),
-            Vector3i(max.blockX, max.blockY, max.blockZ),
-        )
-
-        return buildMap {
-            box.forEach { position ->
-                val block = getBlock(position.x(), position.y(), position.z())
-
-                if (block.isAir) return@forEach
-
-                this[position] = block
-            }
-        }
-    }
-
-    class Bounds {
-        var min: BlockVec = ORIGIN
-            private set
-
-        var max: BlockVec = ORIGIN
-            private set
-
-        fun update(x: Int, y: Int, z: Int) {
-            min = BlockVec(
-                min(min.blockX, x),
-                min(min.blockY, y),
-                min(min.blockZ, z)
-            )
-            max = BlockVec(
-                max(max.blockX, x),
-                max(max.blockY, y),
-                max(max.blockZ, z)
-            )
         }
     }
 
