@@ -20,7 +20,7 @@ object VectorCodecs {
             if (list.size == 3) {
                 DataResult.success(Vector3d(list[0], list[1], list[2]))
             } else {
-                DataResult.error { "Expected 3 ints for Vec3i, got ${list.size}" }
+                DataResult.error { "Expected 3 doubles for Vec3i, got ${list.size}" }
             }
         },
         { vec -> listOf(vec.x(), vec.y(), vec.z()) }

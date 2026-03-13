@@ -1,10 +1,9 @@
 package net.mcbrawls.blueprint.editor
 
-import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.box.VecBox
-import net.mcbrawls.blueprint.editor.anchor.AnchorEntity
+import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
 import net.mcbrawls.blueprint.state.PalettedState
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.instance.Instance
@@ -13,33 +12,31 @@ import org.joml.Vector3i
 import org.joml.Vector3ic
 
 object MinestomBlueprintHelper {
-    fun createBlueprint(root: BlockVec, blocks: Map<Vector3ic, Block>, anchorEntities: Collection<AnchorEntity> = emptyList(), regions: Map<String, VecBox> = emptyMap()): Blueprint<Block> {
+    fun createBlueprint(
+        root: BlockVec,
+        blocks: Map<Vector3ic, Block>,
+        markerEntities: Collection<MarkerGroupEntity> = emptyList(),
+        regions: Map<String, VecBox> = emptyMap(),
+    ): Blueprint<Block> {
         val palette = mutableListOf<Block>()
         val palettedStates = mutableListOf<PalettedState>()
 
         blocks.forEach { (position, block) ->
-            if (block !in palette) {
-                palette.add(block)
-            }
-
-            // create paletted state
-            val derivedPosition = Vector3i(position.x() - root.blockX, position.y() - root.blockY, position.z() - root.blockZ)
-            val paletteId = palette.indexOf(block)
-            palettedStates.add(PalettedState(derivedPosition, paletteId))
+            if (block !in palette) palette.add(block)
+            val derivedPosition = Vector3i(
+                position.x() - root.blockX,
+                position.y() - root.blockY,
+                position.z() - root.blockZ,
+            )
+            palettedStates.add(PalettedState(derivedPosition, palette.indexOf(block)))
         }
 
-        // create anchors
-        val anchors = mutableListOf<Pair<String, Anchor>>()
-        anchorEntities.forEach { anchorEntity ->
-            val id = anchorEntity.anchorId
-            val anchor = anchorEntity.createAnchor(root)
-            anchors.add(id to anchor)
+        val markers = markerEntities.associate { entity ->
+            entity.markerName to entity.createMarker(root)
         }
 
-        val blueprint = Blueprint(palette, palettedStates, anchors, regions)
-        return blueprint
+        return Blueprint(palette, palettedStates, markers, regions)
     }
-
 
     fun getBlocks(instance: Instance, bounds: Bounds): Map<Vector3ic, Block> {
         val min = bounds.min
@@ -52,10 +49,7 @@ object MinestomBlueprintHelper {
         return buildMap {
             box.forEach { position ->
                 val block = instance.getBlock(position.x(), position.y(), position.z())
-
-                if (block.isAir) return@forEach
-
-                this[position] = block
+                if (!block.isAir) this[position] = block
             }
         }
     }

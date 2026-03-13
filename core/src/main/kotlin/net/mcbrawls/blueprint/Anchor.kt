@@ -3,31 +3,28 @@ package net.mcbrawls.blueprint
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import net.mcbrawls.blueprint.serialization.VectorCodecs
-import net.mcbrawls.codex.nativePair
 import org.joml.Vector2fc
 import org.joml.Vector3dc
-import java.util.Optional
 
 /**
- * An entity-like point within a blueprint that can hold custom data.
+ * A positional point within a blueprint: a location and facing direction.
+ * Belongs to a [Marker]; use [Marker] to attach type info and group-level structured properties.
+ *
+ * Per-anchor [properties] allow individual points within a group to carry their own data -
+ * e.g. `init_index` on specific spawns, `radius` or `dom_zone` on individual hills.
  */
 data class Anchor(
     val position: Vector3dc,
     val rotation: Vector2fc,
-    val data: Optional<String> = Optional.empty(),
+    val properties: Map<String, PropertyValue> = emptyMap(),
 ) {
     companion object {
         val CODEC: Codec<Anchor> = RecordCodecBuilder.create { instance ->
             instance.group(
                 VectorCodecs.VECTOR_3D.fieldOf("position").forGetter(Anchor::position),
                 VectorCodecs.VECTOR_2F.fieldOf("rotation").forGetter(Anchor::rotation),
-                Codec.STRING.optionalFieldOf("data").forGetter(Anchor::data),
+                PropertyValue.MAP_CODEC.optionalFieldOf("properties", emptyMap()).forGetter(Anchor::properties),
             ).apply(instance, ::Anchor)
         }
-
-        val LEGACY_LIST_CODEC: Codec<List<Pair<String, Anchor>>> = Codec.withAlternative(
-            nativePair(Codec.STRING.fieldOf("id").codec(), CODEC).listOf(),
-            Codec.unboundedMap(Codec.STRING, CODEC).xmap({ it.toList() }, { it.toMap() })
-        )
     }
 }

@@ -9,9 +9,9 @@ import net.kyori.adventure.text.format.NamedTextColor
 import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.PlacedBlueprint
-import net.mcbrawls.blueprint.editor.anchor.AnchorEntity
-import net.mcbrawls.blueprint.editor.anchor.AnchorModType
-import net.mcbrawls.blueprint.editor.anchor.DecorationAnchorEntity
+import net.mcbrawls.blueprint.PropertyValue
+import net.mcbrawls.blueprint.editor.anchor.MarkerAnchorEntity
+import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
 import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
@@ -19,7 +19,6 @@ import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.encodeQuick
 import net.minestom.server.coordinate.BlockVec
 import net.minestom.server.coordinate.Pos
-import net.minestom.server.entity.Entity
 import net.minestom.server.entity.Player
 import net.minestom.server.entity.PlayerHand
 import net.minestom.server.event.EventNode
@@ -32,7 +31,6 @@ import net.minestom.server.event.player.PlayerUseItemOnBlockEvent
 import net.minestom.server.event.trait.InstanceEvent
 import net.minestom.server.instance.InstanceContainer
 import net.minestom.server.instance.block.Block
-import net.minestom.server.item.ItemStack
 import net.minestom.server.item.Material
 import net.minestom.server.sound.SoundEvent
 import net.minestom.server.tag.Tag
@@ -40,25 +38,25 @@ import net.minestom.server.world.DimensionType
 import org.joml.Vector2f
 import org.joml.Vector3d
 import java.io.File
-import java.util.Optional
 import java.util.UUID
 
 class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
     private var placedBlueprint: PlacedBlueprint<Block>? = null
-
     private val bounds = Bounds(ORIGIN)
-
     private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
+
+    /** All marker group entities currently in this editor, keyed by marker name. */
+    private val markerEntities: MutableMap<String, MarkerGroupEntity> = mutableMapOf()
 
     fun initializeInternal() {
         if (blueprint != null) {
             val placed = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
             placedBlueprint = placed
 
-            placed.getAllAnchors().forEach { (id, anchor) ->
-                spawnAnchor(id, anchor)
+            placed.getAllMarkers().forEach { (name, marker) ->
+                spawnMarker(name, marker)
             }
 
             regionHandler.initialize()
@@ -70,145 +68,68 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     fun initializeEvents(node: EventNode<InstanceEvent>) {
         node.addListener(RemoveEntityFromInstanceEvent::class.java) { event ->
             val player = event.entity as? Player ?: return@addListener
-
             regionHandler.removePlayer(player)
-
+            player.removeTag(ACTIVE_MARKER_TAG)
             player.removeTag(ACTIVE_ANCHOR_TAG)
-            player.removeTag(ANCHOR_MOD_TYPE_TAG)
             player.removeTag(ACTIVE_REGION_TAG)
         }
 
         node.addListener(PlayerChatEvent::class.java) { event ->
             event.isCancelled = true
-
             val player = event.player
             val str = event.rawMessage
 
+            // --- Region creation mode intercepts all input ---
             if (regionHandler.hasActiveCreationSession(player)) {
                 if (str.startsWith("$")) {
-                    // Check for region-specific commands
                     when (str) {
-                        $$"$region cancel" -> {
-                            regionHandler.cancelCreation(player)
-                        }
+                        $$"$region cancel" -> regionHandler.cancelCreation(player)
                     }
                 } else {
-                    // Treat as region ID
-                    if (regionHandler.confirmRegion(player, str)) {
-                        regionHandler.exitCreationMode(player)
-                    }
+                    if (regionHandler.confirmRegion(player, str)) regionHandler.exitCreationMode(player)
                 }
-
                 return@addListener
             }
 
-            var shouldReturn = true
-            when (str) {
-                $$"$clear" -> {
-                    player.removeTag(ACTIVE_ANCHOR_TAG)
-                    player.removeTag(ANCHOR_MOD_TYPE_TAG)
-                    player.removeTag(ACTIVE_REGION_TAG)
-                    player.sendActionBar(Component.text("Cleared active selection"))
-                }
-
-                $$"$teleport" -> {
-                    player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                        (getEntityByUuid(uuid) as? AnchorEntity)?.let { entity ->
-                            player.teleport(entity.position.sub(0.0, player.eyeHeight, 0.0).withView(player.position))
-                        }
-                    }
-                }
-
-                $$"$removedata" -> {
-                    player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                        (getEntityByUuid(uuid) as? AnchorEntity)?.let { entity ->
-                            entity.anchorData = null
-                            entity.updateNametag()
-                        }
-                    }
-                }
-
-                $$"$remove" -> {
-                    player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                        getEntityByUuid(uuid)?.let { entity ->
-                            entity.remove()
-                            player.sendActionBar(Component.text("Removed anchor"))
-                        }
-                    }
-
-                    player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
-                        regionHandler.deleteRegion(regionId)
-                        player.removeTag(ACTIVE_REGION_TAG)
-                        player.sendActionBar(Component.text("Deleted region '$regionId'", NamedTextColor.RED))
-                    }
-                }
-
-                $$"$region create" -> {
-                    regionHandler.enterCreationMode(player)
-                    shouldReturn = true
-                }
-
-                $$"$region exit" -> {
-                    regionHandler.exitCreationMode(player)
-                    shouldReturn = true
-                }
-
-                $$"$region toggle" -> {
-                    val enabled = regionHandler.togglePlayerParticleVisualization(player)
-                    val status = if (enabled) "enabled" else "disabled"
-                    player.sendActionBar(Component.text("Region particles $status"))
-                    shouldReturn = true
-                }
-
-                else -> shouldReturn = false
-            }
-
-            if (shouldReturn) return@addListener
-
-            // Handle region ID modification
-            player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
-                regionHandler.renameRegion(regionId, str)
-                player.setTag(ACTIVE_REGION_TAG, str)
-                player.sendActionBar(Component.text("Renamed region to '$str'"))
+            // --- Commands ---
+            if (str.startsWith("$")) {
+                handleCommand(player, str)
                 return@addListener
             }
 
-            player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                player.getTag(ANCHOR_MOD_TYPE_TAG)?.let { modType ->
-                    (getEntityByUuid(uuid) as? AnchorEntity)?.let { entity ->
-                        when (modType) {
-                            AnchorModType.ID -> entity.anchorId = str
-                            AnchorModType.DATA -> entity.anchorData = str
-                        }
-
-                        entity.updateNametag()
-                    }
-                }
+            // --- Plain text: rename active marker ---
+            player.getTag(ACTIVE_MARKER_TAG)?.let { currentName ->
+                renameMarker(player, currentName, str)
             }
         }
 
         node.addListener(PlayerEntityInteractEvent::class.java) { event ->
             val player = event.player
-            val entity = event.target
 
-            // Handle region selection
-            if (entity is InstanceRegionHandler.RegionEntity) {
-                setActiveRegion(player, entity.regionId)
-                return@addListener
-            }
-
-            // Handle anchor selection
-            (entity as? AnchorEntity)?.let { anchorEntity ->
-                val uuid = anchorEntity.uuid
-                setActiveAnchor(player, uuid, AnchorModType.ID)
+            when (val entity = event.target) {
+                is InstanceRegionHandler.RegionEntity -> {
+                    setActiveRegion(player, entity.regionId)
+                }
+                is MarkerGroupEntity -> {
+                    setActiveMarker(player, entity.markerName)
+                }
+                is MarkerAnchorEntity -> {
+                    setActiveAnchor(player, entity.uuid, entity.markerGroup.markerName)
+                }
             }
         }
 
         node.addListener(EntityAttackEvent::class.java) { event ->
             val player = event.entity as? Player ?: return@addListener
-            val entity = event.target as? AnchorEntity ?: return@addListener
-            val uuid = entity.uuid
-            setActiveAnchor(player, uuid, AnchorModType.DATA)
+
+            when (val entity = event.target) {
+                is MarkerAnchorEntity -> {
+                    removeAnchor(player, entity)
+                }
+                is MarkerGroupEntity -> {
+                    removeMarker(player, entity.markerName)
+                }
+            }
         }
 
         node.addListener(PlayerUseItemOnBlockEvent::class.java) { event ->
@@ -216,27 +137,39 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
             val player = event.player
             val point = event.position.add(event.cursorPosition)
-            val playerPosition = player.position
-            val position = Pos(point, playerPosition.yaw, playerPosition.pitch)
+            val playerPos = player.position
 
+            // Region creation takes priority
             if (regionHandler.hasActiveCreationSession(player)) {
-                val regionPos = Vector3d(point.x(), point.y(), point.z())
-                regionHandler.setPosition(player, regionPos)
+                regionHandler.setPosition(player, Vector3d(point.x(), point.y(), point.z()))
                 return@addListener
             }
 
-            val anchorPos = Vector3d(position.x, position.y, position.z)
-            val anchorRot = Vector2f(position.yaw, position.pitch)
+            if (event.itemStack.material() != Material.STICK) return@addListener
 
-            // TODO decorations placement
-            when (event.itemStack.material()) {
-                Material.STICK -> spawnAnchor("decoration", Anchor(anchorPos, anchorRot, Optional.of("fracture:jump_pad")))
-                Material.WOODEN_HOE -> {
-                    val entity = spawnAnchor(UUID.randomUUID().toString(), Anchor(anchorPos, anchorRot, Optional.empty()))
-                    setActiveAnchor(player, entity.uuid, AnchorModType.ID)
-                }
-                else -> {}
+            val activeMarkerName = player.getTag(ACTIVE_MARKER_TAG)
+            if (activeMarkerName == null) {
+                player.sendActionBar(Component.text("Select a marker first (right-click its group entity)", NamedTextColor.YELLOW))
+                return@addListener
             }
+
+            val markerEntity = markerEntities[activeMarkerName]
+            if (markerEntity == null) {
+                player.sendActionBar(Component.text("Marker '$activeMarkerName' not found", NamedTextColor.RED))
+                return@addListener
+            }
+
+            val anchorPos = Vector3d(point.x(), point.y(), point.z())
+            val anchorRot = Vector2f(playerPos.yaw, playerPos.pitch)
+            val anchor = Anchor(anchorPos, anchorRot)
+
+            val anchorEntity = MarkerAnchorEntity(markerEntity)
+            anchorEntity.setInstance(this, anchor.combinedPos)
+            markerEntity.anchorEntities.add(anchorEntity)
+            markerEntity.updateNametag()
+            anchorEntity.updateNametag()
+
+            player.sendActionBar(Component.text("Added anchor #${markerEntity.anchorEntities.size} to '$activeMarkerName'"))
         }
 
         node.addListener(PlayerPickBlockEvent::class.java) { event ->
@@ -244,72 +177,275 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 val player = event.player
                 val heldSlot = player.heldSlot
                 val inventory = player.inventory
-
                 val key = event.block.key()
                 val material = Material.fromKey(key)
-                val stack = ItemStack.builder(material).build()
+                val stack = net.minestom.server.item.ItemStack.builder(material).build()
 
                 for (i in 0 until 9) {
-                    val hotbarStack = inventory.getItemStack(i)
-                    if (hotbarStack.isSimilar(stack)) {
+                    if (inventory.getItemStack(i).isSimilar(stack)) {
                         player.setHeldItemSlot(i.toByte())
                         return@addListener
                     }
                 }
 
                 val existingStack = inventory.getItemStack(heldSlot.toInt())
-
                 if (!existingStack.isSimilar(stack)) {
                     inventory.setItemStack(heldSlot.toInt(), stack)
+                    if (!existingStack.isAir) inventory.addItemStack(existingStack)
+                }
+            }
+        }
+    }
 
-                    if (!existingStack.isAir) {
-                        inventory.addItemStack(existingStack)
+    // -------------------------------------------------------------------------
+    // Command handling
+    // -------------------------------------------------------------------------
+
+    private fun handleCommand(player: Player, str: String) {
+        val parts = str.removePrefix("$").trim().split(" ")
+        val command = parts[0]
+
+        when (command) {
+            "clear" -> {
+                player.removeTag(ACTIVE_MARKER_TAG)
+                player.removeTag(ACTIVE_ANCHOR_TAG)
+                player.removeTag(ACTIVE_REGION_TAG)
+                player.sendActionBar(Component.text("Cleared selection"))
+            }
+
+            "remove" -> {
+                player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
+                    val anchorEntity = entities.filterIsInstance<MarkerAnchorEntity>()
+                        .find { it.uuid == uuid }
+                    if (anchorEntity != null) {
+                        removeAnchor(player, anchorEntity)
+                        return
+                    }
+                }
+                player.getTag(ACTIVE_MARKER_TAG)?.let { name ->
+                    removeMarker(player, name)
+                    return
+                }
+                player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
+                    regionHandler.deleteRegion(regionId)
+                    player.removeTag(ACTIVE_REGION_TAG)
+                    player.sendActionBar(Component.text("Deleted region '$regionId'", NamedTextColor.RED))
+                }
+            }
+
+            "teleport" -> {
+                player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
+                    val entity = entities.filterIsInstance<MarkerAnchorEntity>().find { it.uuid == uuid }
+                    entity?.let {
+                        player.teleport(it.position.sub(0.0, player.eyeHeight, 0.0).withView(player.position))
                     }
                 }
             }
-        }
-    }
 
-    private fun spawnAnchor(id: String, anchor: Anchor): Entity {
-        return when (id) {
-            "decoration" -> {
-                try {
-                    val data = anchor.data.orElse("")
-                    val key = Key.key(data)
-                    val entity = DecorationAnchorEntity(key)
-                    entity.setInstance(this, anchor.combinedPos)
-                    entity
-                } catch (_: Throwable) {
-                    spawnDefaultAnchor(id, anchor)
+            // $marker <name> [type]  - create a new marker group at player position
+            "marker" -> {
+                val name = parts.getOrNull(1) ?: run {
+                    player.sendActionBar(Component.text("Usage: \$marker <name> [type]", NamedTextColor.RED))
+                    return
+                }
+                if (markerEntities.containsKey(name)) {
+                    player.sendActionBar(Component.text("Marker '$name' already exists", NamedTextColor.RED))
+                    return
+                }
+                val type = parts.getOrNull(2)?.let { runCatching { Key.key(it) }.getOrNull() }
+                    ?: Key.key("blueprint", "unknown")
+
+                val groupPos = player.position
+                val markerEntity = MarkerGroupEntity(name, type)
+                markerEntity.setInstance(this, groupPos)
+                markerEntities[name] = markerEntity
+                setActiveMarker(player, name)
+                player.sendActionBar(Component.text("Created marker '$name' ($type)"))
+            }
+
+            // $type <key>  - change type of active marker
+            "type" -> {
+                val activeMarkerName = player.getTag(ACTIVE_MARKER_TAG) ?: run {
+                    player.sendActionBar(Component.text("No marker selected", NamedTextColor.RED))
+                    return
+                }
+                val newType = parts.getOrNull(1)?.let { runCatching { Key.key(it) }.getOrNull() } ?: run {
+                    player.sendActionBar(Component.text("Usage: \$type <namespace:key>", NamedTextColor.RED))
+                    return
+                }
+                markerEntities[activeMarkerName]?.let { entity ->
+                    entity.markerType = newType
+                    entity.updateNametag()
+                    player.sendActionBar(Component.text("Type set to $newType"))
                 }
             }
 
-            else -> spawnDefaultAnchor(id, anchor)
+            // $prop <key> [value]  - set or remove a property on the active marker
+            "prop" -> {
+                val activeMarkerName = player.getTag(ACTIVE_MARKER_TAG) ?: run {
+                    player.sendActionBar(Component.text("No marker selected", NamedTextColor.RED))
+                    return
+                }
+                val key = parts.getOrNull(1) ?: run {
+                    player.sendActionBar(Component.text("Usage: \$prop <key> [value]", NamedTextColor.RED))
+                    return
+                }
+                val markerEntity = markerEntities[activeMarkerName] ?: return
+                val value = parts.drop(2).joinToString(" ").takeIf { it.isNotEmpty() }
+
+                val updated = markerEntity.properties.toMutableMap()
+                if (value != null) {
+                    updated[key] = inferPropertyValue(value)
+                    player.sendActionBar(Component.text("Set $key = $value"))
+                } else {
+                    updated.remove(key)
+                    player.sendActionBar(Component.text("Removed property '$key'"))
+                }
+                markerEntity.properties = updated
+                markerEntity.updateNametag()
+            }
+
+            // $aprop <key> [value]  - set or remove a property on the active anchor
+            "aprop" -> {
+                val anchorUuid = player.getTag(ACTIVE_ANCHOR_TAG) ?: run {
+                    player.sendActionBar(Component.text("No anchor selected", NamedTextColor.RED))
+                    return
+                }
+                val key = parts.getOrNull(1) ?: run {
+                    player.sendActionBar(Component.text("Usage: \$aprop <key> [value]", NamedTextColor.RED))
+                    return
+                }
+                val anchorEntity = entities.filterIsInstance<MarkerAnchorEntity>()
+                    .find { it.uuid == anchorUuid } ?: return
+                val value = parts.drop(2).joinToString(" ").takeIf { it.isNotEmpty() }
+
+                val updated = anchorEntity.properties.toMutableMap()
+                if (value != null) {
+                    updated[key] = inferPropertyValue(value)
+                    player.sendActionBar(Component.text("Anchor: set $key = $value"))
+                } else {
+                    updated.remove(key)
+                    player.sendActionBar(Component.text("Anchor: removed property '$key'"))
+                }
+                anchorEntity.properties = updated
+                anchorEntity.updateNametag()
+            }
+
+            // Region sub-commands (unchanged)
+            "region" -> {
+                when (parts.getOrNull(1)) {
+                    "create" -> regionHandler.enterCreationMode(player)
+                    "exit" -> regionHandler.exitCreationMode(player)
+                    "toggle" -> {
+                        val enabled = regionHandler.togglePlayerParticleVisualization(player)
+                        player.sendActionBar(Component.text("Region particles ${if (enabled) "enabled" else "disabled"}"))
+                    }
+                    else -> player.sendActionBar(Component.text("Unknown region command", NamedTextColor.RED))
+                }
+            }
+
+            else -> player.sendActionBar(Component.text("Unknown command: \$$command", NamedTextColor.RED))
         }
     }
 
-    private fun spawnDefaultAnchor(id: String, anchor: Anchor): AnchorEntity {
-        val entity = AnchorEntity(id, anchor)
-        entity.setInstance(this, anchor.combinedPos)
-        return entity
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    private fun spawnMarker(name: String, marker: net.mcbrawls.blueprint.Marker) {
+        val groupPos: Pos = if (marker.anchors.isNotEmpty()) {
+            val cx = marker.anchors.sumOf { it.position.x() } / marker.anchors.size
+            val cy = marker.anchors.sumOf { it.position.y() } / marker.anchors.size
+            val cz = marker.anchors.sumOf { it.position.z() } / marker.anchors.size
+            Pos(cx, cy, cz)
+        } else {
+            ORIGIN.asPos()
+        }
+
+        val markerEntity = MarkerGroupEntity(name, marker.type, marker.properties)
+        markerEntity.setInstance(this, groupPos)
+        markerEntities[name] = markerEntity
+
+        marker.anchors.forEach { anchor ->
+            val anchorEntity = MarkerAnchorEntity(markerEntity, anchor.properties)
+            anchorEntity.setInstance(this, anchor.combinedPos)
+            markerEntity.anchorEntities.add(anchorEntity)
+            anchorEntity.updateNametag()
+        }
+
+        markerEntity.updateNametag()
     }
 
-    private fun setActiveAnchor(player: Player, uuid: UUID, type: AnchorModType) {
-        if (player.getTag(ANCHOR_MOD_TYPE_TAG) == type && player.getTag(ACTIVE_ANCHOR_TAG) == uuid) return
+    private fun removeMarker(player: Player, name: String) {
+        val markerEntity = markerEntities.remove(name) ?: return
+        markerEntity.anchorEntities.toList().forEach { it.remove() }
+        markerEntity.anchorEntities.clear()
+        markerEntity.remove()
+        if (player.getTag(ACTIVE_MARKER_TAG) == name) {
+            player.removeTag(ACTIVE_MARKER_TAG)
+            player.removeTag(ACTIVE_ANCHOR_TAG)
+        }
+        player.sendActionBar(Component.text("Removed marker '$name'", NamedTextColor.RED))
+    }
 
+    private fun removeAnchor(player: Player, anchorEntity: MarkerAnchorEntity) {
+        val group = anchorEntity.markerGroup
+        anchorEntity.remove()
+        group.anchorEntities.remove(anchorEntity)
+        group.updateNametag()
+        if (player.getTag(ACTIVE_ANCHOR_TAG) == anchorEntity.uuid) {
+            player.removeTag(ACTIVE_ANCHOR_TAG)
+        }
+        player.sendActionBar(Component.text("Removed anchor from '${group.markerName}'"))
+    }
+
+    private fun renameMarker(player: Player, currentName: String, newName: String) {
+        if (markerEntities.containsKey(newName)) {
+            player.sendActionBar(Component.text("'$newName' already exists", NamedTextColor.RED))
+            return
+        }
+        val entity = markerEntities.remove(currentName) ?: return
+        entity.markerName = newName
+        entity.updateNametag()
+        entity.anchorEntities.forEach { it.updateNametag() }
+        markerEntities[newName] = entity
+        player.setTag(ACTIVE_MARKER_TAG, newName)
+        player.sendActionBar(Component.text("Renamed '$currentName' → '$newName'"))
+    }
+
+    private fun setActiveMarker(player: Player, name: String) {
+        if (player.getTag(ACTIVE_MARKER_TAG) == name) return
+        player.removeTag(ACTIVE_ANCHOR_TAG)
+        player.removeTag(ACTIVE_REGION_TAG)
+        player.setTag(ACTIVE_MARKER_TAG, name)
+        player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
+    }
+
+    private fun setActiveAnchor(player: Player, uuid: UUID, markerName: String) {
+        if (player.getTag(ACTIVE_ANCHOR_TAG) == uuid) return
         player.removeTag(ACTIVE_REGION_TAG)
         player.setTag(ACTIVE_ANCHOR_TAG, uuid)
-        player.setTag(ANCHOR_MOD_TYPE_TAG, type)
+        player.setTag(ACTIVE_MARKER_TAG, markerName)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
     }
 
     private fun setActiveRegion(player: Player, regionId: String) {
         if (player.getTag(ACTIVE_REGION_TAG) == regionId) return
-
+        player.removeTag(ACTIVE_MARKER_TAG)
         player.removeTag(ACTIVE_ANCHOR_TAG)
-        player.removeTag(ANCHOR_MOD_TYPE_TAG)
         player.setTag(ACTIVE_REGION_TAG, regionId)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
+    }
+
+    /**
+     * Infers the most specific [PropertyValue] type from a string value.
+     * Tries Boolean (strict), then Int, then Double, then falls back to String.
+     */
+    private fun inferPropertyValue(value: String): PropertyValue = when {
+        value.toBooleanStrictOrNull() != null -> PropertyValue.BoolValue(value.toBooleanStrict())
+        value.toIntOrNull() != null -> PropertyValue.IntValue(value.toInt())
+        value.toDoubleOrNull() != null -> PropertyValue.DoubleValue(value.toDouble())
+        else -> PropertyValue.StringValue(value)
     }
 
     fun postInitialize() {
@@ -318,7 +454,6 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
     override fun tick(time: Long) {
         super.tick(time)
-
         if (!initialized) return
 
         regionHandler.tick()
@@ -329,8 +464,13 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
 
         players.forEach { player ->
-            player.getTag(ANCHOR_MOD_TYPE_TAG)?.let { tag ->
-                player.sendActionBar(Component.text("Modifying anchor: $tag"))
+            player.getTag(ACTIVE_MARKER_TAG)?.let { name ->
+                val anchor = player.getTag(ACTIVE_ANCHOR_TAG)
+                if (anchor != null) {
+                    player.sendActionBar(Component.text("Anchor #${markerEntities[name]?.anchorEntities?.indexOfFirst { it.uuid == anchor }?.plus(1) ?: "?"} in '$name' - \$aprop/\$remove/\$teleport/\$clear"))
+                } else {
+                    player.sendActionBar(Component.text("Marker: $name - type in chat to rename, \$type/\$prop/\$remove"))
+                }
             }
 
             player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
@@ -345,18 +485,15 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     }
 
     fun save(folder: File) {
-        // prepare file
         val path = "${blueprintId.namespace()}/${blueprintId.value()}"
         val file = folder.resolve("$path.nbt")
 
-        // create blueprint
         val root = bounds.min
         val blockMap = MinestomBlueprintHelper.getBlocks(this, bounds)
         val regions = regionHandler.collectRegions(root)
-        val anchors = entities.filterIsInstance<AnchorEntity>()
-        val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, anchors, regions)
+        val markerGroups = entities.filterIsInstance<MarkerGroupEntity>()
+        val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions)
 
-        // serialize
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
             file.parentFile.mkdirs()
@@ -369,8 +506,8 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     companion object {
         val ORIGIN = BlockVec(0, 100, 0)
 
+        val ACTIVE_MARKER_TAG: Tag<String> = Tag.String("active_marker")
         val ACTIVE_ANCHOR_TAG: Tag<UUID> = Tag.UUID("active_anchor")
-        val ANCHOR_MOD_TYPE_TAG: Tag<AnchorModType> = Tag.Transient("anchor_mod_type")
         val ACTIVE_REGION_TAG: Tag<String> = Tag.String("active_region")
     }
 }

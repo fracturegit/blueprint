@@ -1,8 +1,8 @@
 package net.mcbrawls.blueprint
 
+import net.kyori.adventure.key.Key
 import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.box.VecBox
-import net.mcbrawls.blueprint.state.PalettedState
 import org.joml.Vector3d
 import org.joml.Vector3ic
 import org.joml.plus
@@ -14,42 +14,56 @@ data class PlacedBlueprint<T>(
     val blockBox: BlockBox = BlockBox(position, position.plus(blueprint.size))
 
     fun getRegion(id: String): VecBox? {
-        val region = blueprint.regions[id] ?: return null
-        return region.offset(Vector3d(position))
-    }
-
-    fun getAllAnchors(): List<Pair<String, Anchor>> {
-        return blueprint.anchors.map { (id, anchor) -> id to offsetAnchor(anchor) }
+        return blueprint.regions[id]?.offset(Vector3d(position))
     }
 
     /**
-     * Gets all anchors of a given id.
+     * Gets a marker by name with all anchor positions offset to world coordinates.
      */
-    fun getAnchorsWithId(id: String): List<Anchor> {
-        return blueprint.anchors
-            .filter { (testedId, _) -> testedId == id }
-            .map { (_, anchor) -> offsetAnchor(anchor) }
+    fun getMarker(name: String): Marker? {
+        return blueprint.markers[name]?.let { offsetMarker(it) }
     }
 
     /**
-     * Gets an anchor position from an anchor id assumed to be unique.
-     * @return the placed offset position of the given anchor
+     * Gets the first anchor of the named marker in world coordinates, or null if the marker
+     * doesn't exist or has no anchors. Shorthand for single-anchor markers.
      */
-    fun getAnchorWithId(id: String): Anchor? {
-        return getAnchorsWithId(id).firstOrNull()
+    fun getFirstAnchor(name: String): Anchor? {
+        return getMarker(name)?.anchors?.firstOrNull()
     }
 
     /**
-     * Gets a given anchor offset for this placed blueprint.
+     * Gets all anchors of the named marker in world coordinates, or an empty list if absent.
      */
+    fun getAnchors(name: String): List<Anchor> {
+        return getMarker(name)?.anchors.orEmpty()
+    }
+
+    /**
+     * Gets all markers of a given type with anchors in world coordinates.
+     */
+    fun getMarkersOfType(type: Key): Map<String, Marker> {
+        return blueprint.markers
+            .filterValues { it.type == type }
+            .mapValues { (_, marker) -> offsetMarker(marker) }
+    }
+
+    /**
+     * Gets all markers with anchors in world coordinates.
+     */
+    fun getAllMarkers(): Map<String, Marker> {
+        return blueprint.markers.mapValues { (_, marker) -> offsetMarker(marker) }
+    }
+
+    private fun offsetMarker(marker: Marker): Marker {
+        return marker.copy(anchors = marker.anchors.map { offsetAnchor(it) })
+    }
+
     fun offsetAnchor(anchor: Anchor): Anchor {
-        return Anchor(anchor.position + Vector3d(position), anchor.rotation, anchor.data)
+        return Anchor(anchor.position + Vector3d(position), anchor.rotation, anchor.properties)
     }
 
     fun forEachPosition(action: (Vector3ic) -> Unit) {
-        blueprint.palettedStates
-            .map(PalettedState::pos)
-            .map { it + position }
-            .forEach(action)
+        blueprint.palettedStates.forEach { action(it.pos + position) }
     }
 }

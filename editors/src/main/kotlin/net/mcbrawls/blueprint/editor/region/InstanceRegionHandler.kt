@@ -58,13 +58,6 @@ class InstanceRegionHandler(private val instance: BlueprintEditorInstance, root:
     }
 
     /**
-     * Set particle visualization state for a player explicitly.
-     */
-    fun setPlayerParticleVisualization(player: Player, enabled: Boolean) {
-        playerParticleSettings[player.uuid] = enabled
-    }
-
-    /**
      * Clean up player settings when they leave.
      */
     fun removePlayer(player: Player) {

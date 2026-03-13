@@ -34,24 +34,14 @@ open class BlueprintSerializer<T>(
 
         measureTime {
             folderRoot.walkTopDown()
-                .filter { it.isFile }
+                .filter { it.isFile && it.extension == "nbt" }
                 .forEach { file ->
-                    runCatching {
-                        val ext = file.extension
-                        if (ext == "nbt") {
-                            val filePath = file.relativeTo(folderRoot).path
-                            val namespace = filePath.substringBefore(File.separator)
-                            val path = extractPath(filePath, ext, namespace)
-                            val key = "$namespace:$path"
-
-                            runCatching {
-                                val blueprint = loadBlueprint(file)
-                                blueprints[key] = blueprint
-                            }.onFailure { throwable ->
-                                logger.error("Failed to load blueprint: $key", throwable)
-                            }
-                        }
-                    }
+                    val filePath = file.relativeTo(folderRoot).path
+                    val namespace = filePath.substringBefore(File.separator)
+                    val path = extractPath(filePath, "nbt", namespace)
+                    val key = "$namespace:$path"
+                    runCatching { blueprints[key] = loadBlueprint(file) }
+                        .onFailure { logger.error("Failed to load blueprint: $key", it) }
                 }
         }.let { duration ->
             logger.info("Loaded ${blueprints.size} blueprints in ${duration.inWholeMilliseconds} ms")
