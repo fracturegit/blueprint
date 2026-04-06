@@ -12,6 +12,8 @@ import net.minestom.server.event.EventDispatcher
 import net.minestom.server.instance.Instance
 import net.minestom.server.instance.block.Block
 import org.joml.Vector3i
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.io.File
 
 open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: String? = null) : BlueprintSerializer<Block>(CODEC, folderRoot) {
@@ -38,6 +40,7 @@ open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: Strin
 
     companion object {
         val CODEC: Codec<Blueprint<Block>> = Blueprint.createCodec(::stateAsBlock, ::blockAsState)
+        private val logger: Logger = LoggerFactory.getLogger(MinestomBlueprintSerializer::class.java)
 
         fun placeBlueprint(instance: Instance, point: BlockVec, blueprint: Blueprint<Block>): PlacedBlueprint<Block> {
             blueprint.forEach { offset, block ->
@@ -61,7 +64,13 @@ open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: Strin
         }
 
         fun stateAsBlock(state: State): Block {
-            val block = Block.fromKey(state.blockId) ?: error("Invalid block id: ${state.blockId}")
+            val block = Block.fromKey(state.blockId)
+
+            if (block == null) {
+                logger.error("Invalid block id: ${state.blockId}")
+                return Block.AIR
+            }
+
             return block.withProperties(state.properties)
         }
 
