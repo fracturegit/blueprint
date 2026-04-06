@@ -7,6 +7,8 @@ import org.joml.Vector3i
 import org.joml.Vector3ic
 import org.joml.minus
 import org.joml.plus
+import kotlin.math.ceil
+import kotlin.math.floor
 
 class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
     override val min: Vector3ic
@@ -66,6 +68,23 @@ class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
                 maxOf(a.z(), b.z())
             )
             return min to max
+        }
+
+        fun of(box: VecBox): BlockBox {
+            val min = box.min
+            val max = box.max
+            return BlockBox(
+                Vector3i(
+                    floor(min.x()).toInt(),
+                    floor(min.y()).toInt(),
+                    floor(min.z()).toInt(),
+                ),
+                Vector3i(
+                    ceil(max.x()).toInt(),
+                    ceil(max.y()).toInt(),
+                    ceil(max.z()).toInt(),
+                ),
+            )
         }
     }
 }
