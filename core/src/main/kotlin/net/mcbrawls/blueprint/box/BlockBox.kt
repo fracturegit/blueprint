@@ -7,20 +7,21 @@ import org.joml.Vector3i
 import org.joml.Vector3ic
 import org.joml.minus
 import org.joml.plus
-import kotlin.math.ceil
 import kotlin.math.floor
 
 class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
     override val min: Vector3ic
     override val max: Vector3ic
+    override val center: Vector3ic
+    override val size: Int
 
     init {
         val (min, max) = minMax(a, b)
         this.min = min
         this.max = max
+        this.center = min + (max - min) / 2
+        this.size = (max.x() - min.x() + 1) * (max.y() - min.y() + 1) * (max.z() - min.z() + 1)
     }
-
-    override val center: Vector3ic = min + (max - min) / 2
 
     override fun offset(vec: Vector3ic): BlockBox {
         val newMin = min + vec
@@ -46,6 +47,10 @@ class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
                 }
             }
         }
+    }
+
+    override fun toString(): String {
+        return "BlockBox{$min, $max}"
     }
 
     companion object {
@@ -80,9 +85,9 @@ class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
                     floor(min.z()).toInt(),
                 ),
                 Vector3i(
-                    ceil(max.x()).toInt(),
-                    ceil(max.y()).toInt(),
-                    ceil(max.z()).toInt(),
+                    floor(max.x()).toInt(),
+                    floor(max.y()).toInt(),
+                    floor(max.z()).toInt(),
                 ),
             )
         }

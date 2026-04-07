@@ -11,14 +11,16 @@ import org.joml.plus
 class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double, VecBox>() {
     override val min: Vector3dc
     override val max: Vector3dc
+    override val center: Vector3dc
+    override val size: Double
 
     init {
         val (min, max) = minMax(a, b)
         this.min = min
         this.max = max
+        this.center = min + (max - min) / 2.0
+        this.size = (max.x() - min.x() + 1) * (max.y() - min.y() + 1) * (max.z() - min.z() + 1)
     }
-
-    override val center: Vector3dc = min + (max - min) / 2.0
 
     override fun offset(vec: Vector3dc): VecBox {
         val newMin = min + vec
@@ -37,7 +39,7 @@ class VecBox(a: Vector3dc, b: Vector3dc) : Box<Vector3dc, Double, VecBox>() {
     }
 
     override fun toString(): String {
-        return "Box{$min, $max}"
+        return "VecBox{$min, $max}"
     }
 
     companion object {
