@@ -3,6 +3,7 @@ package net.mcbrawls.blueprint
 import com.mojang.serialization.Codec
 import com.mojang.serialization.codecs.RecordCodecBuilder
 import net.mcbrawls.blueprint.box.VecBox
+import net.mcbrawls.blueprint.camera.CameraTrack
 import net.mcbrawls.blueprint.state.PalettedState
 import net.mcbrawls.blueprint.state.State
 import org.joml.Vector3i
@@ -15,6 +16,8 @@ data class Blueprint<T>(
     val palettedStates: List<PalettedState>,
     val markers: Map<String, Marker>,
     val regions: Map<String, VecBox>,
+    val waypoints: Map<String, Waypoint> = emptyMap(),
+    val cameraTracks: Map<String, CameraTrack> = emptyMap(),
 ) {
     val size: Vector3ic = calculateBlueprintSize(palettedStates.map(PalettedState::pos))
 
@@ -45,6 +48,12 @@ data class Blueprint<T>(
                 Codec.unboundedMap(Codec.STRING, VecBox.CODEC)
                     .optionalFieldOf("regions", emptyMap())
                     .forGetter(Blueprint<T>::regions),
+                Codec.unboundedMap(Codec.STRING, Waypoint.CODEC)
+                    .optionalFieldOf("waypoints", emptyMap())
+                    .forGetter(Blueprint<T>::waypoints),
+                Codec.unboundedMap(Codec.STRING, CameraTrack.CODEC)
+                    .optionalFieldOf("camera_tracks", emptyMap())
+                    .forGetter(Blueprint<T>::cameraTracks),
             ).apply(instance, ::Blueprint)
         }
 

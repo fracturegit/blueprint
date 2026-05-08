@@ -10,9 +10,16 @@ import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.PlacedBlueprint
 import net.mcbrawls.blueprint.PropertyValue
+import net.mcbrawls.blueprint.Waypoint
+import net.mcbrawls.blueprint.camera.CameraTrack
+import net.mcbrawls.blueprint.camera.EasingFunction
+import net.mcbrawls.blueprint.camera.PathMode
 import net.mcbrawls.blueprint.editor.anchor.MarkerAnchorEntity
 import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
+import net.mcbrawls.blueprint.editor.camera.CameraKeyframeEntity
+import net.mcbrawls.blueprint.editor.camera.CameraTrackEntity
 import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
+import net.mcbrawls.blueprint.editor.waypoint.WaypointEntity
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
 import net.mcbrawls.blueprint.util.NbtOps
@@ -49,6 +56,8 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
     /** All marker group entities currently in this editor, keyed by marker name. */
     private val markerEntities: MutableMap<String, MarkerGroupEntity> = mutableMapOf()
+    private val waypointEntities: MutableMap<String, WaypointEntity> = mutableMapOf()
+    private val trackEntities: MutableMap<String, CameraTrackEntity> = mutableMapOf()
 
     fun initializeInternal() {
         if (blueprint != null) {
@@ -57,6 +66,14 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
             placed.getAllMarkers().forEach { (name, marker) ->
                 spawnMarker(name, marker)
+            }
+
+            placed.getAllWaypoints().forEach { (name, waypoint) ->
+                spawnWaypoint(name, waypoint)
+            }
+
+            placed.getAllCameraTracks().forEach { (id, track) ->
+                spawnCameraTrack(id, track)
             }
 
             regionHandler.initialize()
@@ -72,6 +89,9 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_MARKER_TAG)
             player.removeTag(ACTIVE_ANCHOR_TAG)
             player.removeTag(ACTIVE_REGION_TAG)
+            player.removeTag(ACTIVE_WAYPOINT_TAG)
+            player.removeTag(ACTIVE_TRACK_TAG)
+            player.removeTag(ACTIVE_KEYFRAME_TAG)
         }
 
         node.addListener(PlayerChatEvent::class.java) { event ->
@@ -116,6 +136,30 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 is MarkerAnchorEntity -> {
                     setActiveAnchor(player, entity.uuid, entity.markerGroup.markerName)
                 }
+                is WaypointEntity -> {
+                    entity.teleportPlayer(player)
+                    player.removeTag(ACTIVE_MARKER_TAG)
+                    player.removeTag(ACTIVE_ANCHOR_TAG)
+                    player.removeTag(ACTIVE_REGION_TAG)
+                    player.removeTag(ACTIVE_TRACK_TAG)
+                    player.removeTag(ACTIVE_KEYFRAME_TAG)
+                    player.setTag(ACTIVE_WAYPOINT_TAG, entity.waypointName)
+                    player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                }
+                is CameraTrackEntity -> {
+                    player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                    player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                    player.removeTag(ACTIVE_KEYFRAME_TAG)
+                    player.setTag(ACTIVE_TRACK_TAG, entity.trackId)
+                    player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                }
+                is CameraKeyframeEntity -> {
+                    player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                    player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                    player.setTag(ACTIVE_TRACK_TAG, entity.trackEntity.trackId)
+                    player.setTag(ACTIVE_KEYFRAME_TAG, entity.index)
+                    player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                }
             }
         }
 
@@ -128,6 +172,20 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 }
                 is MarkerGroupEntity -> {
                     removeMarker(player, entity.markerName)
+                }
+                is WaypointEntity -> {
+                    waypointEntities.remove(entity.waypointName)
+                    entity.remove()
+                    if (player.getTag(ACTIVE_WAYPOINT_TAG) == entity.waypointName) {
+                        player.removeTag(ACTIVE_WAYPOINT_TAG)
+                    }
+                    player.sendActionBar(Component.text("Removed waypoint '${entity.waypointName}'", NamedTextColor.RED))
+                }
+                is CameraTrackEntity -> {
+                    removeTrack(player, entity.trackId)
+                }
+                is CameraKeyframeEntity -> {
+                    removeKeyframe(player, entity)
                 }
             }
         }
@@ -210,6 +268,9 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 player.removeTag(ACTIVE_MARKER_TAG)
                 player.removeTag(ACTIVE_ANCHOR_TAG)
                 player.removeTag(ACTIVE_REGION_TAG)
+                player.removeTag(ACTIVE_WAYPOINT_TAG)
+                player.removeTag(ACTIVE_TRACK_TAG)
+                player.removeTag(ACTIVE_KEYFRAME_TAG)
                 player.sendActionBar(Component.text("Cleared selection"))
             }
 
@@ -344,6 +405,34 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 }
             }
 
+            "waypoint" -> {
+                val sub = parts.getOrNull(1)
+                if (sub == "save") {
+                    val name = parts.getOrNull(2) ?: run {
+                        player.sendActionBar(Component.text("Usage: \$waypoint save <name>", NamedTextColor.RED))
+                        return
+                    }
+                    waypointEntities[name]?.remove()
+                    val entity = WaypointEntity(name)
+                    entity.setInstance(this, player.position)
+                    waypointEntities[name] = entity
+                    player.setTag(ACTIVE_WAYPOINT_TAG, name)
+                    player.sendActionBar(Component.text("Saved waypoint '$name'"))
+                } else if (sub != null) {
+                    val entity = waypointEntities[sub]
+                    if (entity == null) {
+                        player.sendActionBar(Component.text("Unknown waypoint '$sub'", NamedTextColor.RED))
+                        return
+                    }
+                    entity.teleportPlayer(player)
+                    player.sendActionBar(Component.text("Teleported to '$sub'"))
+                } else {
+                    player.sendActionBar(Component.text("Usage: \$waypoint save <name> | \$waypoint <name>", NamedTextColor.RED))
+                }
+            }
+
+            "track" -> handleTrackCommand(player, parts)
+
             else -> player.sendActionBar(Component.text("Unknown command: \$$command", NamedTextColor.RED))
         }
     }
@@ -376,6 +465,35 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         markerEntity.updateNametag()
     }
 
+    private fun spawnWaypoint(name: String, waypoint: Waypoint) {
+        val entity = WaypointEntity(name)
+        entity.setInstance(this, Pos(
+            waypoint.position.x(), waypoint.position.y(), waypoint.position.z(),
+            waypoint.rotation.x(), waypoint.rotation.y()
+        ))
+        waypointEntities[name] = entity
+    }
+
+    private fun spawnCameraTrack(id: String, track: CameraTrack) {
+        val trackEntity = CameraTrackEntity(id)
+        val kfEntities = track.keyframes.map { kf ->
+            CameraKeyframeEntity(trackEntity, kf.duration, kf.pathMode, kf.easing).also { entity ->
+                entity.setInstance(this, Pos(
+                    kf.position.x(), kf.position.y(), kf.position.z(),
+                    kf.rotation.x(), kf.rotation.y()
+                ))
+            }
+        }
+        trackEntity.keyframeEntities.addAll(kfEntities)
+        kfEntities.forEach { it.updateNametag() }
+
+        val spawnPos = kfEntities.firstOrNull()?.position?.add(0.75, 0.0, 0.0)
+            ?: Pos(ORIGIN.x().toDouble(), ORIGIN.y().toDouble(), ORIGIN.z().toDouble())
+        trackEntity.setInstance(this, spawnPos)
+        trackEntity.updateNametag()
+        trackEntities[id] = trackEntity
+    }
+
     private fun removeMarker(player: Player, name: String) {
         val markerEntity = markerEntities.remove(name) ?: return
         markerEntity.anchorEntities.toList().forEach { it.remove() }
@@ -397,6 +515,182 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_ANCHOR_TAG)
         }
         player.sendActionBar(Component.text("Removed anchor from '${group.markerName}'"))
+    }
+
+    private fun handleTrackCommand(player: Player, parts: List<String>) {
+        val sub = parts.getOrNull(1)
+        val knownSubs = listOf("add", "remove", "duration", "pathmode", "easing", "teleport", "position", "up", "down", "move")
+
+        if (sub != null && sub !in knownSubs) {
+            val id = sub
+            if (!trackEntities.containsKey(id)) {
+                val trackEntity = CameraTrackEntity(id)
+                trackEntity.setInstance(this, player.position)
+                trackEntities[id] = trackEntity
+                player.sendActionBar(Component.text("Created track '$id'"))
+            } else {
+                player.sendActionBar(Component.text("Selected track '$id'"))
+            }
+            player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+            player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+            player.removeTag(ACTIVE_KEYFRAME_TAG)
+            player.setTag(ACTIVE_TRACK_TAG, id)
+            return
+        }
+
+        val trackId = player.getTag(ACTIVE_TRACK_TAG) ?: run {
+            player.sendActionBar(Component.text("No track selected — use \$track <id>", NamedTextColor.RED))
+            return
+        }
+        val trackEntity = trackEntities[trackId] ?: run {
+            player.sendActionBar(Component.text("Track '$trackId' not found", NamedTextColor.RED))
+            return
+        }
+
+        when (sub) {
+            "add" -> {
+                val kfe = CameraKeyframeEntity(trackEntity)
+                kfe.setInstance(this, player.position)
+                trackEntity.keyframeEntities.add(kfe)
+                kfe.updateNametag()
+                trackEntity.updateNametag()
+                if (trackEntity.keyframeEntities.size == 1) trackEntity.repositionFromKeyframes()
+                player.setTag(ACTIVE_KEYFRAME_TAG, kfe.index)
+                player.sendActionBar(Component.text("Added keyframe #${kfe.index + 1} to '$trackId'"))
+            }
+
+            "remove" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG)
+                if (kfIndex != null) {
+                    val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex)
+                    if (kfe != null) { removeKeyframe(player, kfe); return }
+                }
+                removeTrack(player, trackId)
+            }
+
+            "duration" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val value = parts.getOrNull(2)?.toDoubleOrNull() ?: run {
+                    player.sendActionBar(Component.text("Usage: \$track duration <seconds>", NamedTextColor.RED)); return
+                }
+                val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex) ?: return
+                kfe.duration = value
+                kfe.updateNametag()
+                trackEntity.updateNametag()
+                player.sendActionBar(Component.text("Duration set to ${value}s"))
+            }
+
+            "pathmode" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val mode = parts.getOrNull(2)?.uppercase()?.let { runCatching { PathMode.valueOf(it) }.getOrNull() } ?: run {
+                    player.sendActionBar(Component.text("Usage: \$track pathmode <linear|catmull_rom>", NamedTextColor.RED)); return
+                }
+                val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex) ?: return
+                kfe.pathMode = mode
+                kfe.updateNametag()
+                player.sendActionBar(Component.text("Path mode set to ${mode.name}"))
+            }
+
+            "easing" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val fn = parts.getOrNull(2)?.uppercase()?.let { runCatching { EasingFunction.valueOf(it) }.getOrNull() } ?: run {
+                    player.sendActionBar(Component.text("Usage: \$track easing <function>", NamedTextColor.RED)); return
+                }
+                val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex) ?: return
+                kfe.easing = fn
+                kfe.updateNametag()
+                player.sendActionBar(Component.text("Easing set to ${fn.name}"))
+            }
+
+            "teleport" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex) ?: return
+                player.teleport(kfe.position.sub(0.0, player.eyeHeight, 0.0).withView(kfe.position))
+            }
+
+            "position" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val kfe = trackEntity.keyframeEntities.getOrNull(kfIndex) ?: return
+                kfe.teleport(player.position)
+                kfe.updateNametag()
+                if (kfIndex == 0) trackEntity.repositionFromKeyframes()
+                refreshAllKeyframeNametags(trackEntity)
+                player.sendActionBar(Component.text("Keyframe #${kfIndex + 1} moved to current position"))
+            }
+
+            "up" -> shiftKeyframe(player, trackEntity, -1)
+            "down" -> shiftKeyframe(player, trackEntity, +1)
+
+            "move" -> {
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: run {
+                    player.sendActionBar(Component.text("No keyframe selected", NamedTextColor.RED)); return
+                }
+                val target = parts.getOrNull(2)?.toIntOrNull()?.minus(1) ?: run {
+                    player.sendActionBar(Component.text("Usage: \$track move <index>", NamedTextColor.RED)); return
+                }
+                val clamped = target.coerceIn(0, trackEntity.keyframeEntities.size - 1)
+                val kfe = trackEntity.keyframeEntities.removeAt(kfIndex)
+                trackEntity.keyframeEntities.add(clamped, kfe)
+                player.setTag(ACTIVE_KEYFRAME_TAG, clamped)
+                refreshAllKeyframeNametags(trackEntity)
+                if (kfIndex == 0 || clamped == 0) trackEntity.repositionFromKeyframes()
+                player.sendActionBar(Component.text("Moved keyframe to position #${clamped + 1}"))
+            }
+
+            else -> player.sendActionBar(Component.text("Unknown track sub-command: $sub", NamedTextColor.RED))
+        }
+    }
+
+    private fun removeTrack(player: Player, trackId: String) {
+        val entity = trackEntities.remove(trackId) ?: return
+        entity.keyframeEntities.toList().forEach { it.remove() }
+        entity.keyframeEntities.clear()
+        entity.remove()
+        if (player.getTag(ACTIVE_TRACK_TAG) == trackId) {
+            player.removeTag(ACTIVE_TRACK_TAG)
+            player.removeTag(ACTIVE_KEYFRAME_TAG)
+        }
+        player.sendActionBar(Component.text("Removed track '$trackId'", NamedTextColor.RED))
+    }
+
+    private fun removeKeyframe(player: Player, kfe: CameraKeyframeEntity) {
+        val trackEntity = kfe.trackEntity
+        val removedIndex = kfe.index  // capture before removal — indexOf returns -1 after
+        val wasFirst = removedIndex == 0
+        kfe.remove()
+        trackEntity.keyframeEntities.remove(kfe)
+        if (player.getTag(ACTIVE_KEYFRAME_TAG) == removedIndex) player.removeTag(ACTIVE_KEYFRAME_TAG)
+        refreshAllKeyframeNametags(trackEntity)
+        trackEntity.updateNametag()
+        if (wasFirst) trackEntity.repositionFromKeyframes()
+        player.sendActionBar(Component.text("Removed keyframe from '${trackEntity.trackId}'"))
+    }
+
+    private fun shiftKeyframe(player: Player, trackEntity: CameraTrackEntity, delta: Int) {
+        val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG) ?: return
+        val newIndex = (kfIndex + delta).coerceIn(0, trackEntity.keyframeEntities.size - 1)
+        if (newIndex == kfIndex) return
+        val kfe = trackEntity.keyframeEntities.removeAt(kfIndex)
+        trackEntity.keyframeEntities.add(newIndex, kfe)
+        player.setTag(ACTIVE_KEYFRAME_TAG, newIndex)
+        refreshAllKeyframeNametags(trackEntity)
+        if (kfIndex == 0 || newIndex == 0) trackEntity.repositionFromKeyframes()
+        player.sendActionBar(Component.text("Keyframe moved to #${newIndex + 1}"))
+    }
+
+    private fun refreshAllKeyframeNametags(trackEntity: CameraTrackEntity) {
+        trackEntity.keyframeEntities.forEach { it.updateNametag() }
+        trackEntity.updateNametag()
     }
 
     private fun renameMarker(player: Player, currentName: String, newName: String) {
@@ -448,6 +742,34 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         else -> PropertyValue.StringValue(value)
     }
 
+    private fun drawTrackPaths() {
+        trackEntities.values.forEach { trackEntity ->
+            val kfes = trackEntity.keyframeEntities
+            if (kfes.size < 2) return@forEach
+            for (i in 0 until kfes.size - 1) {
+                val from = kfes[i].position
+                val to = kfes[i + 1].position
+                val steps = 12
+                for (step in 0..steps) {
+                    val t = step.toDouble() / steps
+                    val x = from.x + (to.x - from.x) * t
+                    val y = from.y + (to.y - from.y) * t
+                    val z = from.z + (to.z - from.z) * t
+                    players.forEach { player ->
+                        player.sendPacket(
+                            net.minestom.server.network.packet.server.play.ParticlePacket(
+                                net.minestom.server.particle.Particle.DUST.withProperties(
+                                    net.minestom.server.color.DyeColor.PURPLE, 0.3f
+                                ),
+                                x, y, z, 0f, 0f, 0f, 0f, 1
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
     fun postInitialize() {
         initialized = true
     }
@@ -476,7 +798,31 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
                 player.sendActionBar(Component.text("Modifying region: $regionId"))
             }
+
+            player.getTag(ACTIVE_WAYPOINT_TAG)?.let { name ->
+                player.sendActionBar(Component.text("Waypoint: $name — \$waypoint save $name to overwrite"))
+            }
+
+            player.getTag(ACTIVE_TRACK_TAG)?.let { trackId ->
+                val te = trackEntities[trackId]
+                val kfIndex = player.getTag(ACTIVE_KEYFRAME_TAG)
+                if (kfIndex != null && te != null) {
+                    val kfe = te.keyframeEntities.getOrNull(kfIndex)
+                    if (kfe != null) {
+                        player.sendActionBar(Component.text(
+                            "Keyframe #${kfIndex + 1} in '$trackId' — ${"%.1f".format(kfe.duration)}s | ${kfe.pathMode.name} | ${kfe.easing.name} — \$track duration/pathmode/easing/position/remove"
+                        ))
+                    }
+                } else if (te != null) {
+                    val totalDur = te.keyframeEntities.drop(1).sumOf { it.duration }
+                    player.sendActionBar(Component.text(
+                        "Track: $trackId (${te.keyframeEntities.size} kf, ${"%.1f".format(totalDur)}s) — \$track add / \$track remove"
+                    ))
+                }
+            }
         }
+
+        drawTrackPaths()
     }
 
     override fun setBlock(x: Int, y: Int, z: Int, block: Block, doBlockUpdates: Boolean) {
@@ -492,7 +838,12 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         val blockMap = MinestomBlueprintHelper.getBlocks(this, bounds)
         val regions = regionHandler.collectRegions(root)
         val markerGroups = entities.filterIsInstance<MarkerGroupEntity>()
+        val waypoints = waypointEntities.mapValues { (_, entity) -> entity.toWaypoint(root) }
+        val cameraTracks = trackEntities.mapValues { (_, entity) ->
+            CameraTrack(entity.keyframeEntities.map { it.toKeyframe(root) })
+        }
         val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions)
+            .copy(waypoints = waypoints, cameraTracks = cameraTracks)
 
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
@@ -509,5 +860,8 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         val ACTIVE_MARKER_TAG: Tag<String> = Tag.String("active_marker")
         val ACTIVE_ANCHOR_TAG: Tag<UUID> = Tag.UUID("active_anchor")
         val ACTIVE_REGION_TAG: Tag<String> = Tag.String("active_region")
+        val ACTIVE_WAYPOINT_TAG: Tag<String> = Tag.String("active_waypoint")
+        val ACTIVE_TRACK_TAG: Tag<String> = Tag.String("active_track")
+        val ACTIVE_KEYFRAME_TAG: Tag<Int> = Tag.Integer("active_keyframe")
     }
 }

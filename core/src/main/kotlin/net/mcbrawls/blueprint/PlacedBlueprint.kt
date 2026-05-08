@@ -3,6 +3,7 @@ package net.mcbrawls.blueprint
 import net.kyori.adventure.key.Key
 import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.box.VecBox
+import net.mcbrawls.blueprint.camera.CameraTrack
 import org.joml.Vector3d
 import org.joml.Vector3ic
 import org.joml.plus
@@ -61,6 +62,34 @@ data class PlacedBlueprint<T>(
 
     fun offsetAnchor(anchor: Anchor): Anchor {
         return Anchor(anchor.position + Vector3d(position), anchor.rotation, anchor.properties)
+    }
+
+    fun getWaypoint(name: String): Waypoint? {
+        return blueprint.waypoints[name]?.let { offsetWaypoint(it) }
+    }
+
+    fun getAllWaypoints(): Map<String, Waypoint> {
+        return blueprint.waypoints.mapValues { (_, waypoint) -> offsetWaypoint(waypoint) }
+    }
+
+    fun getCameraTrack(id: String): CameraTrack? {
+        return blueprint.cameraTracks[id]?.let { offsetCameraTrack(it) }
+    }
+
+    fun getAllCameraTracks(): Map<String, CameraTrack> {
+        return blueprint.cameraTracks.mapValues { (_, track) -> offsetCameraTrack(track) }
+    }
+
+    private fun offsetWaypoint(waypoint: Waypoint): Waypoint {
+        val offset = Vector3d(position)
+        return waypoint.copy(position = waypoint.position.add(offset, Vector3d()))
+    }
+
+    private fun offsetCameraTrack(track: CameraTrack): CameraTrack {
+        val offset = Vector3d(position)
+        return track.copy(keyframes = track.keyframes.map { kf ->
+            kf.copy(position = kf.position.add(offset, Vector3d()))
+        })
     }
 
     fun forEachPosition(action: (Vector3ic) -> Unit) {

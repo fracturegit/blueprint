@@ -5,4 +5,11 @@ dependencies {
     api("org.slf4j:slf4j-api:2.0.17")
     api("net.kyori:adventure-nbt:4.25.0")
     api("net.kyori:adventure-key:4.25.0")
+
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.0")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
