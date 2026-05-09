@@ -25,6 +25,7 @@ import net.mcbrawls.blueprint.minestom.MinestomBlueprints.combinedPos
 import net.mcbrawls.blueprint.util.NbtOps
 import net.mcbrawls.codex.encodeQuick
 import net.minestom.server.coordinate.BlockVec
+import net.minestom.server.coordinate.Point
 import net.minestom.server.coordinate.Pos
 import net.minestom.server.entity.Player
 import net.minestom.server.entity.PlayerHand
@@ -38,6 +39,8 @@ import net.minestom.server.event.player.PlayerUseItemOnBlockEvent
 import net.minestom.server.event.trait.InstanceEvent
 import net.minestom.server.instance.InstanceContainer
 import net.minestom.server.instance.block.Block
+import net.minestom.server.instance.block.BlockFace
+import net.minestom.server.instance.block.BlockHandler
 import net.minestom.server.item.Material
 import net.minestom.server.sound.SoundEvent
 import net.minestom.server.tag.Tag
@@ -828,6 +831,25 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     override fun setBlock(x: Int, y: Int, z: Int, block: Block, doBlockUpdates: Boolean) {
         super.setBlock(x, y, z, block, doBlockUpdates)
         bounds.update(x, y, z)
+    }
+
+    override fun placeBlock(placement: BlockHandler.Placement, doBlockUpdates: Boolean): Boolean {
+        if (super.placeBlock(placement, doBlockUpdates)) {
+            val position = placement.blockPosition
+            bounds.update(position.blockX(), position.blockY(), position.blockZ())
+            return true
+        }
+
+        return false
+    }
+
+    override fun breakBlock(player: Player, position: Point, face: BlockFace, doBlockUpdates: Boolean): Boolean {
+        if (super.breakBlock(player, position, face, doBlockUpdates)) {
+            bounds.update(position.blockX(), position.blockY(), position.blockZ())
+            return true
+        }
+
+        return false
     }
 
     fun save(folder: File) {
