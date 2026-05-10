@@ -967,6 +967,9 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
 
         players.forEach { player ->
+            val pos = player.position
+            bounds.update(pos.blockX(), pos.blockY(), pos.blockZ())
+
             player.getTag(ACTIVE_MARKER_TAG)?.let { name ->
                 val anchor = player.getTag(ACTIVE_ANCHOR_TAG)
                 if (anchor != null) {
@@ -1056,7 +1059,15 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         }
 
         // Collect connectors from live entities — local positions are already stored correctly.
-        val connectors = connectorEntities.map { it.connector }
+        val connectors = connectorEntities.map { entity ->
+            val wp = entity.position
+            val localPos = Vector3i(
+                wp.blockX() - root.blockX(),
+                wp.blockY() - root.blockY(),
+                wp.blockZ() - root.blockZ(),
+            )
+            entity.connector.copy(position = localPos)
+        }
 
         val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions, connectors)
             .copy(waypoints = waypoints, cameraTracks = cameraTracks)
