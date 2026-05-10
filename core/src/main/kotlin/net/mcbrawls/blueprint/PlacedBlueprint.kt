@@ -5,14 +5,30 @@ import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.box.VecBox
 import net.mcbrawls.blueprint.camera.CameraTrack
 import org.joml.Vector3d
+import org.joml.Vector3i
 import org.joml.Vector3ic
 import org.joml.plus
 
 data class PlacedBlueprint<T>(
     val blueprint: Blueprint<T>,
     val position: Vector3ic,
+    val rotation: Rotation = Rotation.NONE,
 ) {
-    val blockBox: BlockBox = BlockBox(position, position.plus(blueprint.size))
+    /**
+     * The bounding box of this placed blueprint in world coordinates.
+     * Uses the rotation-aware size so rotated rooms (CW_90/CW_270) have correct x/z extents.
+     */
+    val blockBox: BlockBox = run {
+        val size = rotation.rotatedSize(blueprint.size)
+        BlockBox(
+            Vector3i(position),
+            Vector3i(
+                position.x() + size.x() - 1,
+                position.y() + size.y() - 1,
+                position.z() + size.z() - 1,
+            ),
+        )
+    }
 
     fun getRegion(id: String): VecBox? {
         return blueprint.regions[id]?.offset(Vector3d(position))

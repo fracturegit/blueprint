@@ -65,7 +65,8 @@ open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: Strin
                 )
             }
 
-            val placedBlueprint = PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ))
+            // Pass rotation so PlacedBlueprint.blockBox reflects the actual post-rotation footprint.
+            val placedBlueprint = PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ), rotation)
             EventDispatcher.call(BlueprintPlaceEvent(instance, point, blueprint, placedBlueprint))
             return placedBlueprint
         }

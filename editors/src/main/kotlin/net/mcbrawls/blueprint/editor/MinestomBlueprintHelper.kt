@@ -1,6 +1,7 @@
 package net.mcbrawls.blueprint.editor
 
 import net.mcbrawls.blueprint.Blueprint
+import net.mcbrawls.blueprint.RoomConnector
 import net.mcbrawls.blueprint.box.BlockBox
 import net.mcbrawls.blueprint.box.VecBox
 import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
@@ -17,6 +18,7 @@ object MinestomBlueprintHelper {
         blocks: Map<Vector3ic, Block>,
         markerEntities: Collection<MarkerGroupEntity> = emptyList(),
         regions: Map<String, VecBox> = emptyMap(),
+        connectors: List<RoomConnector> = emptyList(),
     ): Blueprint<Block> {
         val palette = mutableListOf<Block>()
         val palettedStates = mutableListOf<PalettedState>()
@@ -35,7 +37,7 @@ object MinestomBlueprintHelper {
             entity.markerName to entity.createMarker(root)
         }
 
-        return Blueprint(palette, palettedStates, markers, regions)
+        return Blueprint(palette, palettedStates, markers, regions, connectors = connectors)
     }
 
     fun getBlocks(instance: Instance, bounds: Bounds): Map<Vector3ic, Block> {

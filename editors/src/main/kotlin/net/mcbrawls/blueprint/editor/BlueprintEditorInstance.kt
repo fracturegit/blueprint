@@ -8,8 +8,11 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
+import net.mcbrawls.blueprint.CardinalDirection
+import net.mcbrawls.blueprint.ConnectorType
 import net.mcbrawls.blueprint.PlacedBlueprint
 import net.mcbrawls.blueprint.PropertyValue
+import net.mcbrawls.blueprint.RoomConnector
 import net.mcbrawls.blueprint.Waypoint
 import net.mcbrawls.blueprint.camera.CameraTrack
 import net.mcbrawls.blueprint.camera.EasingFunction
@@ -18,6 +21,7 @@ import net.mcbrawls.blueprint.editor.anchor.MarkerAnchorEntity
 import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
 import net.mcbrawls.blueprint.editor.camera.CameraKeyframeEntity
 import net.mcbrawls.blueprint.editor.camera.CameraTrackEntity
+import net.mcbrawls.blueprint.editor.connector.ConnectorMarkerEntity
 import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
 import net.mcbrawls.blueprint.editor.waypoint.WaypointEntity
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
@@ -47,6 +51,7 @@ import net.minestom.server.tag.Tag
 import net.minestom.server.world.DimensionType
 import org.joml.Vector2f
 import org.joml.Vector3d
+import org.joml.Vector3i
 import java.io.File
 import java.util.UUID
 
@@ -61,6 +66,9 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     private val markerEntities: MutableMap<String, MarkerGroupEntity> = mutableMapOf()
     private val waypointEntities: MutableMap<String, WaypointEntity> = mutableMapOf()
     private val trackEntities: MutableMap<String, CameraTrackEntity> = mutableMapOf()
+
+    /** All connector entities currently in this editor. Order is not significant. */
+    private val connectorEntities: MutableList<ConnectorMarkerEntity> = mutableListOf()
 
     fun initializeInternal() {
         if (blueprint != null) {
@@ -79,6 +87,11 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 spawnCameraTrack(id, track)
             }
 
+            // Connectors: local positions are offset by ORIGIN to get world positions.
+            blueprint.connectors.forEach { connector ->
+                spawnConnector(connector)
+            }
+
             regionHandler.initialize()
         } else {
             setBlock(ORIGIN, Block.STONE)
@@ -95,6 +108,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_WAYPOINT_TAG)
             player.removeTag(ACTIVE_TRACK_TAG)
             player.removeTag(ACTIVE_KEYFRAME_TAG)
+            player.removeTag(ACTIVE_CONNECTOR_TAG)
         }
 
         node.addListener(PlayerChatEvent::class.java) { event ->
@@ -146,22 +160,35 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                     player.removeTag(ACTIVE_REGION_TAG)
                     player.removeTag(ACTIVE_TRACK_TAG)
                     player.removeTag(ACTIVE_KEYFRAME_TAG)
+                    player.removeTag(ACTIVE_CONNECTOR_TAG)
                     player.setTag(ACTIVE_WAYPOINT_TAG, entity.waypointName)
                     player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
                 }
                 is CameraTrackEntity -> {
                     player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
                     player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
-                    player.removeTag(ACTIVE_KEYFRAME_TAG)
+                    player.removeTag(ACTIVE_KEYFRAME_TAG); player.removeTag(ACTIVE_CONNECTOR_TAG)
                     player.setTag(ACTIVE_TRACK_TAG, entity.trackId)
                     player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
                 }
                 is CameraKeyframeEntity -> {
                     player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
                     player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                    player.removeTag(ACTIVE_CONNECTOR_TAG)
                     player.setTag(ACTIVE_TRACK_TAG, entity.trackEntity.trackId)
                     player.setTag(ACTIVE_KEYFRAME_TAG, entity.index)
                     player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                }
+                is ConnectorMarkerEntity -> {
+                    // Select the connector — store its index in the list as the active tag.
+                    val index = connectorEntities.indexOf(entity)
+                    if (index >= 0) {
+                        player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                        player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                        player.removeTag(ACTIVE_TRACK_TAG); player.removeTag(ACTIVE_KEYFRAME_TAG)
+                        player.setTag(ACTIVE_CONNECTOR_TAG, index)
+                        player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                    }
                 }
             }
         }
@@ -189,6 +216,9 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 }
                 is CameraKeyframeEntity -> {
                     removeKeyframe(player, entity)
+                }
+                is ConnectorMarkerEntity -> {
+                    removeConnectorEntity(player, entity)
                 }
             }
         }
@@ -274,6 +304,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                 player.removeTag(ACTIVE_WAYPOINT_TAG)
                 player.removeTag(ACTIVE_TRACK_TAG)
                 player.removeTag(ACTIVE_KEYFRAME_TAG)
+                player.removeTag(ACTIVE_CONNECTOR_TAG)
                 player.sendActionBar(Component.text("Cleared selection"))
             }
 
@@ -294,6 +325,11 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                     regionHandler.deleteRegion(regionId)
                     player.removeTag(ACTIVE_REGION_TAG)
                     player.sendActionBar(Component.text("Deleted region '$regionId'", NamedTextColor.RED))
+                }
+                player.getTag(ACTIVE_CONNECTOR_TAG)?.let { index ->
+                    val entity = connectorEntities.getOrNull(index)
+                    if (entity != null) removeConnectorEntity(player, entity)
+                    return
                 }
             }
 
@@ -436,8 +472,147 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
 
             "track" -> handleTrackCommand(player, parts)
 
+            // ---------------------------------------------------------------
+            // $connector add <north|south|east|west> <entrance|exit>
+            //   Places a connector at the player's current block position.
+            //
+            // $connector remove
+            //   Removes the currently selected connector (right-click to select).
+            //
+            // $connector list
+            //   Prints all connectors to action bar in sequence.
+            // ---------------------------------------------------------------
+            "connector" -> handleConnectorCommand(player, parts)
+
             else -> player.sendActionBar(Component.text("Unknown command: \$$command", NamedTextColor.RED))
         }
+    }
+
+    // -------------------------------------------------------------------------
+    // Connector editing
+    // -------------------------------------------------------------------------
+
+    private fun handleConnectorCommand(player: Player, parts: List<String>) {
+        when (val sub = parts.getOrNull(1)) {
+            "add" -> {
+                val dir = parts.getOrNull(2)
+                    ?.uppercase()
+                    ?.let { runCatching { CardinalDirection.valueOf(it) }.getOrNull() }
+                    ?: run {
+                        player.sendActionBar(Component.text(
+                            "Usage: \$connector add <north|south|east|west> <entrance|exit>",
+                            NamedTextColor.RED
+                        ))
+                        return
+                    }
+                val type = parts.getOrNull(3)
+                    ?.uppercase()
+                    ?.let { runCatching { ConnectorType.valueOf(it) }.getOrNull() }
+                    ?: run {
+                        player.sendActionBar(Component.text(
+                            "Usage: \$connector add <north|south|east|west> <entrance|exit>",
+                            NamedTextColor.RED
+                        ))
+                        return
+                    }
+
+                // Local position = player block position minus blueprint origin.
+                val origin = ORIGIN
+                val localPos = Vector3i(
+                    player.position.blockX() - origin.blockX(),
+                    player.position.blockY() - origin.blockY(),
+                    player.position.blockZ() - origin.blockZ(),
+                )
+                val entity = ConnectorMarkerEntity(localPos, dir, type)
+                val worldPos = Pos(
+                    player.position.blockX() + 0.5,
+                    player.position.blockY().toDouble(),
+                    player.position.blockZ() + 0.5,
+                )
+                entity.setInstance(this, worldPos)
+                entity.updateNametag()
+                connectorEntities.add(entity)
+
+                // Select the new connector immediately.
+                val index = connectorEntities.indexOf(entity)
+                player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                player.removeTag(ACTIVE_TRACK_TAG); player.removeTag(ACTIVE_KEYFRAME_TAG)
+                player.setTag(ACTIVE_CONNECTOR_TAG, index)
+
+                val typeLabel = type.name.lowercase()
+                val dirLabel = dir.name.lowercase()
+                player.sendActionBar(Component.text("Added $typeLabel connector facing $dirLabel at local $localPos"))
+            }
+
+            "remove" -> {
+                val index = player.getTag(ACTIVE_CONNECTOR_TAG) ?: run {
+                    player.sendActionBar(Component.text(
+                        "No connector selected — right-click one to select it",
+                        NamedTextColor.RED
+                    ))
+                    return
+                }
+                val entity = connectorEntities.getOrNull(index) ?: run {
+                    player.sendActionBar(Component.text("Connector not found", NamedTextColor.RED))
+                    return
+                }
+                removeConnectorEntity(player, entity)
+            }
+
+            "list" -> {
+                if (connectorEntities.isEmpty()) {
+                    player.sendActionBar(Component.text("No connectors placed"))
+                    return
+                }
+                // Print all connectors to chat since action bar only shows one line.
+                connectorEntities.forEachIndexed { i, entity ->
+                    val color = if (entity.type == ConnectorType.ENTRANCE) NamedTextColor.GREEN else NamedTextColor.GOLD
+                    player.sendMessage(Component.text(
+                        "#${i + 1}: ${entity.type.name.lowercase()} facing ${entity.direction.name.lowercase()} at ${entity.localPosition.x()},${entity.localPosition.y()},${entity.localPosition.z()}",
+                        color
+                    ))
+                }
+            }
+
+            null -> {
+                player.sendActionBar(Component.text(
+                    "\$connector add <dir> <entrance|exit>  |  \$connector remove  |  \$connector list",
+                    NamedTextColor.YELLOW
+                ))
+            }
+
+            else -> player.sendActionBar(Component.text("Unknown connector sub-command: $sub", NamedTextColor.RED))
+        }
+    }
+
+    /**
+     * Spawns a [ConnectorMarkerEntity] for a [RoomConnector] that was loaded from the blueprint.
+     * The connector's [localPosition] is relative to blueprint origin; we offset it to get world pos.
+     */
+    private fun spawnConnector(connector: RoomConnector) {
+        val origin = ORIGIN
+        val worldPos = Pos(
+            origin.blockX() + connector.position.x() + 0.5,
+            (origin.blockY() + connector.position.y()).toDouble(),
+            origin.blockZ() + connector.position.z() + 0.5,
+        )
+        val entity = ConnectorMarkerEntity.fromConnector(connector)
+        entity.setInstance(this, worldPos)
+        entity.updateNametag()
+        connectorEntities.add(entity)
+    }
+
+    private fun removeConnectorEntity(player: Player, entity: ConnectorMarkerEntity) {
+        val index = connectorEntities.indexOf(entity)
+        entity.remove()
+        connectorEntities.remove(entity)
+        if (player.getTag(ACTIVE_CONNECTOR_TAG) == index) {
+            player.removeTag(ACTIVE_CONNECTOR_TAG)
+        }
+        val typeLabel = entity.type.name.lowercase()
+        val dirLabel = entity.direction.name.lowercase()
+        player.sendActionBar(Component.text("Removed $typeLabel connector facing $dirLabel", NamedTextColor.RED))
     }
 
     // -------------------------------------------------------------------------
@@ -536,7 +711,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
             }
             player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
             player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
-            player.removeTag(ACTIVE_KEYFRAME_TAG)
+            player.removeTag(ACTIVE_KEYFRAME_TAG); player.removeTag(ACTIVE_CONNECTOR_TAG)
             player.setTag(ACTIVE_TRACK_TAG, id)
             return
         }
@@ -714,6 +889,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         if (player.getTag(ACTIVE_MARKER_TAG) == name) return
         player.removeTag(ACTIVE_ANCHOR_TAG)
         player.removeTag(ACTIVE_REGION_TAG)
+        player.removeTag(ACTIVE_CONNECTOR_TAG)
         player.setTag(ACTIVE_MARKER_TAG, name)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
     }
@@ -721,6 +897,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
     private fun setActiveAnchor(player: Player, uuid: UUID, markerName: String) {
         if (player.getTag(ACTIVE_ANCHOR_TAG) == uuid) return
         player.removeTag(ACTIVE_REGION_TAG)
+        player.removeTag(ACTIVE_CONNECTOR_TAG)
         player.setTag(ACTIVE_ANCHOR_TAG, uuid)
         player.setTag(ACTIVE_MARKER_TAG, markerName)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
@@ -730,6 +907,7 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         if (player.getTag(ACTIVE_REGION_TAG) == regionId) return
         player.removeTag(ACTIVE_MARKER_TAG)
         player.removeTag(ACTIVE_ANCHOR_TAG)
+        player.removeTag(ACTIVE_CONNECTOR_TAG)
         player.setTag(ACTIVE_REGION_TAG, regionId)
         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1.0f, 1.0f))
     }
@@ -823,6 +1001,18 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
                     ))
                 }
             }
+
+            player.getTag(ACTIVE_CONNECTOR_TAG)?.let { index ->
+                val entity = connectorEntities.getOrNull(index)
+                if (entity != null) {
+                    val typeLabel = entity.type.name.lowercase()
+                    val dirLabel = entity.direction.name.lowercase()
+                    val lp = entity.localPosition
+                    player.sendActionBar(Component.text(
+                        "Connector #${index + 1}: $typeLabel facing $dirLabel at ${lp.x()},${lp.y()},${lp.z()} — \$connector remove / \$connector list"
+                    ))
+                }
+            }
         }
 
         drawTrackPaths()
@@ -864,7 +1054,11 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         val cameraTracks = trackEntities.mapValues { (_, entity) ->
             CameraTrack(entity.keyframeEntities.map { it.toKeyframe(root) })
         }
-        val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions)
+
+        // Collect connectors from live entities — local positions are already stored correctly.
+        val connectors = connectorEntities.map { it.connector }
+
+        val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions, connectors)
             .copy(waypoints = waypoints, cameraTracks = cameraTracks)
 
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
@@ -885,5 +1079,6 @@ class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Blo
         val ACTIVE_WAYPOINT_TAG: Tag<String> = Tag.String("active_waypoint")
         val ACTIVE_TRACK_TAG: Tag<String> = Tag.String("active_track")
         val ACTIVE_KEYFRAME_TAG: Tag<Int> = Tag.Integer("active_keyframe")
+        val ACTIVE_CONNECTOR_TAG: Tag<Int> = Tag.Integer("active_connector")
     }
 }
