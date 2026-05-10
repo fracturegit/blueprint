@@ -3,7 +3,9 @@ package net.mcbrawls.blueprint.minestom
 import com.mojang.serialization.Codec
 import net.kyori.adventure.key.Key
 import net.mcbrawls.blueprint.Blueprint
+import net.mcbrawls.blueprint.CardinalDirection
 import net.mcbrawls.blueprint.PlacedBlueprint
+import net.mcbrawls.blueprint.Rotation
 import net.mcbrawls.blueprint.serialization.BlueprintSerializer
 import net.mcbrawls.blueprint.state.State
 import net.minestom.server.coordinate.BlockVec
@@ -12,6 +14,7 @@ import net.minestom.server.event.EventDispatcher
 import net.minestom.server.instance.Instance
 import net.minestom.server.instance.block.Block
 import org.joml.Vector3i
+import org.joml.Vector3ic
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.io.File
@@ -42,15 +45,53 @@ open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: Strin
         val CODEC: Codec<Blueprint<Block>> = Blueprint.createCodec(::stateAsBlock, ::blockAsState)
         private val logger: Logger = LoggerFactory.getLogger(MinestomBlueprintSerializer::class.java)
 
-        fun placeBlueprint(instance: Instance, point: BlockVec, blueprint: Blueprint<Block>): PlacedBlueprint<Block> {
+        fun placeBlueprint(
+            instance: Instance,
+            point: BlockVec,
+            blueprint: Blueprint<Block>,
+            rotation: Rotation = Rotation.NONE,
+        ): PlacedBlueprint<Block> {
+            val size = blueprint.size
             blueprint.forEach { offset, block ->
-                placePosition(instance, point.add(BlockVec(offset.x(), offset.y(), offset.z())), block)
+                val (rotatedOffset, rotatedBlock) = if (rotation == Rotation.NONE) {
+                    offset to block
+                } else {
+                    rotateBlockEntry(offset, block, rotation, size)
+                }
+                placePosition(
+                    instance,
+                    point.add(BlockVec(rotatedOffset.x(), rotatedOffset.y(), rotatedOffset.z())),
+                    rotatedBlock,
+                )
             }
 
             val placedBlueprint = PlacedBlueprint(blueprint, Vector3i(point.blockX, point.blockY, point.blockZ))
             EventDispatcher.call(BlueprintPlaceEvent(instance, point, blueprint, placedBlueprint))
-
             return placedBlueprint
+        }
+
+        private fun rotateBlockEntry(
+            pos: Vector3ic,
+            block: Block,
+            rotation: Rotation,
+            size: Vector3ic,
+        ): Pair<Vector3ic, Block> {
+            val x = pos.x(); val y = pos.y(); val z = pos.z()
+            val sx = size.x(); val sz = size.z()
+            val newPos: Vector3ic = when (rotation) {
+                Rotation.NONE -> Vector3i(x, y, z)
+                Rotation.CW_90 -> Vector3i(sz - 1 - z, y, x)
+                Rotation.CW_180 -> Vector3i(sx - 1 - x, y, sz - 1 - z)
+                Rotation.CW_270 -> Vector3i(z, y, sx - 1 - x)
+            }
+            val facing = block.properties()["facing"]
+            val rotatedBlock = if (facing != null) {
+                val dir = CardinalDirection.entries.find { it.name.equals(facing, ignoreCase = true) }
+                if (dir != null) {
+                    block.withProperties(block.properties() + ("facing" to rotation.rotate(dir).name.lowercase()))
+                } else block
+            } else block
+            return newPos to rotatedBlock
         }
 
         fun placePosition(instance: Instance, point: Point, block: Block) {

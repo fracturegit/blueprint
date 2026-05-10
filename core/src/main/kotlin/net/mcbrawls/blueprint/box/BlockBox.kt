@@ -39,6 +39,12 @@ class BlockBox(a: Vector3ic, b: Vector3ic) : Box<Vector3ic, Int, BlockBox>() {
         return contains(vec.x(), vec.y(), vec.z())
     }
 
+    fun intersects(other: BlockBox): Boolean {
+        return min.x() <= other.max.x() && max.x() >= other.min.x() &&
+               min.y() <= other.max.y() && max.y() >= other.min.y() &&
+               min.z() <= other.max.z() && max.z() >= other.min.z()
+    }
+
     fun forEach(action: (Vector3ic) -> Unit) {
         (min.x()..max.x()).forEach { x ->
             (min.y()..max.y()).forEach { y ->

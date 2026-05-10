@@ -18,6 +18,7 @@ data class Blueprint<T>(
     val regions: Map<String, VecBox>,
     val waypoints: Map<String, Waypoint> = emptyMap(),
     val cameraTracks: Map<String, CameraTrack> = emptyMap(),
+    val connectors: List<RoomConnector> = emptyList(),
 ) {
     val size: Vector3ic = calculateBlueprintSize(palettedStates.map(PalettedState::pos))
 
@@ -54,7 +55,12 @@ data class Blueprint<T>(
                 Codec.unboundedMap(Codec.STRING, CameraTrack.CODEC)
                     .optionalFieldOf("camera_tracks", emptyMap())
                     .forGetter(Blueprint<T>::cameraTracks),
-            ).apply(instance, ::Blueprint)
+                RoomConnector.CODEC.listOf()
+                    .optionalFieldOf("connectors", emptyList())
+                    .forGetter(Blueprint<T>::connectors),
+            ).apply(instance) { palette, states, markers, regions, waypoints, tracks, connectors ->
+                Blueprint(palette, states, markers, regions, waypoints, tracks, connectors)
+            }
         }
 
         fun calculateBlueprintSize(positions: List<Vector3ic>): Vector3i {
