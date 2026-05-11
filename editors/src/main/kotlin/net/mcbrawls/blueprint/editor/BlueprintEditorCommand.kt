@@ -12,16 +12,15 @@ import net.minestom.server.instance.block.Block
 
 class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: String, vararg aliases: String) : AbstractCommand(name, *aliases) {
     init {
+        val blueprintArg = ArgumentType.String("blueprint").let { arg ->
+            arg.setSuggestionCallback { _, _, suggestion ->
+                val blueprints = serializer.collectBlueprints()
+                suggest(blueprints.keys, suggestion)
+            }
+        }
+
         addSyntax {
             requireBase()
-
-            val blueprintArg = ArgumentType.String("blueprint").let { arg ->
-                arg.setSuggestionCallback { _, _, suggestion ->
-                    val blueprints = serializer.collectBlueprints()
-                    suggest(blueprints.keys, suggestion)
-                }
-            }
-
             args(ArgumentType.Literal("open"), blueprintArg)
 
             playerExecutor { player, context ->
@@ -39,7 +38,19 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
 
             playerExecutor { player, context ->
                 val instance = player.instance as? BlueprintEditorInstance ?: error("Not in blueprint editor")
-                executeSave(player, instance)
+                executeSave(player, instance, null)
+            }
+        }
+
+        addSyntax {
+            requireBase()
+
+            args(ArgumentType.Literal("save"), blueprintArg)
+
+            playerExecutor { player, context ->
+                val instance = player.instance as? BlueprintEditorInstance ?: error("Not in blueprint editor")
+                val blueprintKey = Key.key(context[blueprintArg])
+                executeSave(player, instance, blueprintKey)
             }
         }
     }
@@ -58,7 +69,8 @@ class BlueprintEditorCommand(serializer: MinestomBlueprintSerializer, name: Stri
         player.sendMessage("Opening blueprint editor: $blueprintId")
     }
 
-    private fun executeSave(player: Player, instance: BlueprintEditorInstance) {
+    private fun executeSave(player: Player, instance: BlueprintEditorInstance, customBlueprintId: Key?) {
+        customBlueprintId?.let { instance.blueprintId = it }
         BlueprintEditorHandler.save(instance)
         player.sendMessage(Component.text("Saved blueprint: ${instance.blueprintId}"))
     }

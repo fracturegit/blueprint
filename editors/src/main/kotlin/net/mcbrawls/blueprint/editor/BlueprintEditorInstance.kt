@@ -55,7 +55,7 @@ import org.joml.Vector3i
 import java.io.File
 import java.util.UUID
 
-class BlueprintEditorInstance(val blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
+class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
     private var placedBlueprint: PlacedBlueprint<Block>? = null
