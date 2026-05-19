@@ -24,7 +24,6 @@ object BlueprintEditorHandler {
         val instance = BlueprintEditorInstance(id, blueprint)
         instance.setChunkSupplier(::LightingChunk)
         instance.time = 12000
-        instance.timeRate = 0
 
         scope.launch {
             try {
