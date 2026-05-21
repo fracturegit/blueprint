@@ -1,8 +1,7 @@
 package net.mcbrawls.fracture.blueprint.test
 
-import com.mojang.brigadier.Command
 import net.mcbrawls.api.resource
-import net.mcbrawls.blueprint.editor.BlueprintEditorCommand
+import net.mcbrawls.blueprint.editor.BpeCommand
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
 import net.mcbrawls.fracture.command.AbstractCommand
 import net.minestom.server.Auth
@@ -19,7 +18,7 @@ object Main {
         val server = MinecraftServer.init(Auth.Online())
 
         val commandManager = MinecraftServer.getCommandManager()
-        commandManager.register(BlueprintEditorCommand(serializer, "editor"))
+        commandManager.register(BpeCommand(serializer, "editor"))
         commandManager.register(object : AbstractCommand("gamemode") {
             init {
                 addSyntax {

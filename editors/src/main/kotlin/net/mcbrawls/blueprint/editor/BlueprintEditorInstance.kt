@@ -38,7 +38,6 @@ import net.minestom.server.entity.PlayerHand
 import net.minestom.server.event.EventNode
 import net.minestom.server.event.entity.EntityAttackEvent
 import net.minestom.server.event.instance.RemoveEntityFromInstanceEvent
-import net.minestom.server.event.player.PlayerChatEvent
 import net.minestom.server.event.player.PlayerEntityInteractEvent
 import net.minestom.server.event.player.PlayerPickBlockEvent
 import net.minestom.server.event.player.PlayerUseItemOnBlockEvent
@@ -62,16 +61,16 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
 
     private var placedBlueprint: PlacedBlueprint<Block>? = null
     private val bounds = Bounds(ORIGIN)
-    private val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
+    internal val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
 
     /** All marker group entities currently in this editor, keyed by marker name. */
-    private val markerEntities: MutableMap<String, MarkerGroupEntity> = mutableMapOf()
-    private val waypointEntities: MutableMap<String, WaypointEntity> = mutableMapOf()
-    private val trackEntities: MutableMap<String, CameraTrackEntity> = mutableMapOf()
+    internal val markerEntities: MutableMap<String, MarkerGroupEntity> = mutableMapOf()
+    internal val waypointEntities: MutableMap<String, WaypointEntity> = mutableMapOf()
+    internal val trackEntities: MutableMap<String, CameraTrackEntity> = mutableMapOf()
 
     /** All connector entities currently in this editor. Order is not significant. */
-    private val connectorEntities: MutableList<ConnectorMarkerEntity> = mutableListOf()
-    private val decorationEntities: MutableList<DecorationEntity> = mutableListOf()
+    internal val connectorEntities: MutableList<ConnectorMarkerEntity> = mutableListOf()
+    internal val decorationEntities: MutableList<DecorationEntity> = mutableListOf()
 
     fun initializeInternal() {
         if (blueprint != null) {
@@ -118,35 +117,6 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_KEYFRAME_TAG)
             player.removeTag(ACTIVE_CONNECTOR_TAG)
             player.removeTag(ACTIVE_DECORATION_TAG)
-        }
-
-        node.addListener(PlayerChatEvent::class.java) { event ->
-            event.isCancelled = true
-            val player = event.player
-            val str = event.rawMessage
-
-            // --- Region creation mode intercepts all input ---
-            if (regionHandler.hasActiveCreationSession(player)) {
-                if (str.startsWith("$")) {
-                    when (str) {
-                        $$"$region cancel" -> regionHandler.cancelCreation(player)
-                    }
-                } else {
-                    if (regionHandler.confirmRegion(player, str)) regionHandler.exitCreationMode(player)
-                }
-                return@addListener
-            }
-
-            // --- Commands ---
-            if (str.startsWith("$")) {
-                handleCommand(player, str)
-                return@addListener
-            }
-
-            // --- Plain text: rename active marker ---
-            player.getTag(ACTIVE_MARKER_TAG)?.let { currentName ->
-                renameMarker(player, currentName, str)
-            }
         }
 
         node.addListener(PlayerEntityInteractEvent::class.java) { event ->
@@ -309,220 +279,10 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
     }
 
     // -------------------------------------------------------------------------
-    // Command handling
-    // -------------------------------------------------------------------------
-
-    private fun handleCommand(player: Player, str: String) {
-        val parts = str.removePrefix("$").trim().split(" ")
-        val command = parts[0]
-
-        when (command) {
-            "clear" -> {
-                player.removeTag(ACTIVE_MARKER_TAG)
-                player.removeTag(ACTIVE_ANCHOR_TAG)
-                player.removeTag(ACTIVE_REGION_TAG)
-                player.removeTag(ACTIVE_WAYPOINT_TAG)
-                player.removeTag(ACTIVE_TRACK_TAG)
-                player.removeTag(ACTIVE_KEYFRAME_TAG)
-                player.removeTag(ACTIVE_CONNECTOR_TAG)
-                player.removeTag(ACTIVE_DECORATION_TAG)
-                player.sendActionBar(Component.text("Cleared selection"))
-            }
-
-            "remove" -> {
-                player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                    val anchorEntity = entities.filterIsInstance<MarkerAnchorEntity>()
-                        .find { it.uuid == uuid }
-                    if (anchorEntity != null) {
-                        removeAnchor(player, anchorEntity)
-                        return
-                    }
-                }
-                player.getTag(ACTIVE_MARKER_TAG)?.let { name ->
-                    removeMarker(player, name)
-                    return
-                }
-                player.getTag(ACTIVE_REGION_TAG)?.let { regionId ->
-                    regionHandler.deleteRegion(regionId)
-                    player.removeTag(ACTIVE_REGION_TAG)
-                    player.sendActionBar(Component.text("Deleted region '$regionId'", NamedTextColor.RED))
-                }
-                player.getTag(ACTIVE_CONNECTOR_TAG)?.let { index ->
-                    val entity = connectorEntities.getOrNull(index)
-                    if (entity != null) removeConnectorEntity(player, entity)
-                    return
-                }
-                player.getTag(ACTIVE_DECORATION_TAG)?.let { activeId ->
-                    val entity = decorationEntities.find { it.entityId == activeId }
-                    if (entity != null) {
-                        removeDecorationEntity(player, entity)
-                        return
-                    }
-                }
-            }
-
-            "teleport" -> {
-                player.getTag(ACTIVE_ANCHOR_TAG)?.let { uuid ->
-                    val entity = entities.filterIsInstance<MarkerAnchorEntity>().find { it.uuid == uuid }
-                    entity?.let {
-                        player.teleport(it.position.sub(0.0, player.eyeHeight, 0.0).withView(player.position))
-                    }
-                }
-            }
-
-            // $marker <name> [type]  - create a new marker group at player position
-            "marker" -> {
-                val name = parts.getOrNull(1) ?: run {
-                    player.sendActionBar(Component.text("Usage: \$marker <name> [type]", NamedTextColor.RED))
-                    return
-                }
-                if (markerEntities.containsKey(name)) {
-                    player.sendActionBar(Component.text("Marker '$name' already exists", NamedTextColor.RED))
-                    return
-                }
-                val type = parts.getOrNull(2)?.let { runCatching { Key.key(it) }.getOrNull() }
-                    ?: Key.key("blueprint", "unknown")
-
-                val groupPos = player.position
-                val markerEntity = MarkerGroupEntity(name, type)
-                markerEntity.setInstance(this, groupPos)
-                markerEntities[name] = markerEntity
-                setActiveMarker(player, name)
-                player.sendActionBar(Component.text("Created marker '$name' ($type)"))
-            }
-
-            // $type <key>  - change type of active marker
-            "type" -> {
-                val activeMarkerName = player.getTag(ACTIVE_MARKER_TAG) ?: run {
-                    player.sendActionBar(Component.text("No marker selected", NamedTextColor.RED))
-                    return
-                }
-                val newType = parts.getOrNull(1)?.let { runCatching { Key.key(it) }.getOrNull() } ?: run {
-                    player.sendActionBar(Component.text("Usage: \$type <namespace:key>", NamedTextColor.RED))
-                    return
-                }
-                markerEntities[activeMarkerName]?.let { entity ->
-                    entity.markerType = newType
-                    entity.updateNametag()
-                    player.sendActionBar(Component.text("Type set to $newType"))
-                }
-            }
-
-            // $prop <key> [value]  - set or remove a property on the active marker
-            "prop" -> {
-                val activeMarkerName = player.getTag(ACTIVE_MARKER_TAG) ?: run {
-                    player.sendActionBar(Component.text("No marker selected", NamedTextColor.RED))
-                    return
-                }
-                val key = parts.getOrNull(1) ?: run {
-                    player.sendActionBar(Component.text("Usage: \$prop <key> [value]", NamedTextColor.RED))
-                    return
-                }
-                val markerEntity = markerEntities[activeMarkerName] ?: return
-                val value = parts.drop(2).joinToString(" ").takeIf { it.isNotEmpty() }
-
-                val updated = markerEntity.properties.toMutableMap()
-                if (value != null) {
-                    updated[key] = inferPropertyValue(value)
-                    player.sendActionBar(Component.text("Set $key = $value"))
-                } else {
-                    updated.remove(key)
-                    player.sendActionBar(Component.text("Removed property '$key'"))
-                }
-                markerEntity.properties = updated
-                markerEntity.updateNametag()
-            }
-
-            // $aprop <key> [value]  - set or remove a property on the active anchor
-            "aprop" -> {
-                val anchorUuid = player.getTag(ACTIVE_ANCHOR_TAG) ?: run {
-                    player.sendActionBar(Component.text("No anchor selected", NamedTextColor.RED))
-                    return
-                }
-                val key = parts.getOrNull(1) ?: run {
-                    player.sendActionBar(Component.text("Usage: \$aprop <key> [value]", NamedTextColor.RED))
-                    return
-                }
-                val anchorEntity = entities.filterIsInstance<MarkerAnchorEntity>()
-                    .find { it.uuid == anchorUuid } ?: return
-                val value = parts.drop(2).joinToString(" ").takeIf { it.isNotEmpty() }
-
-                val updated = anchorEntity.properties.toMutableMap()
-                if (value != null) {
-                    updated[key] = inferPropertyValue(value)
-                    player.sendActionBar(Component.text("Anchor: set $key = $value"))
-                } else {
-                    updated.remove(key)
-                    player.sendActionBar(Component.text("Anchor: removed property '$key'"))
-                }
-                anchorEntity.properties = updated
-                anchorEntity.updateNametag()
-            }
-
-            // Region sub-commands (unchanged)
-            "region" -> {
-                when (parts.getOrNull(1)) {
-                    "create" -> regionHandler.enterCreationMode(player)
-                    "exit" -> regionHandler.exitCreationMode(player)
-                    "toggle" -> {
-                        val enabled = regionHandler.togglePlayerParticleVisualization(player)
-                        player.sendActionBar(Component.text("Region particles ${if (enabled) "enabled" else "disabled"}"))
-                    }
-                    else -> player.sendActionBar(Component.text("Unknown region command", NamedTextColor.RED))
-                }
-            }
-
-            "waypoint" -> {
-                val sub = parts.getOrNull(1)
-                if (sub == "save") {
-                    val name = parts.getOrNull(2) ?: run {
-                        player.sendActionBar(Component.text("Usage: \$waypoint save <name>", NamedTextColor.RED))
-                        return
-                    }
-                    waypointEntities[name]?.remove()
-                    val entity = WaypointEntity(name)
-                    entity.setInstance(this, player.position)
-                    waypointEntities[name] = entity
-                    player.setTag(ACTIVE_WAYPOINT_TAG, name)
-                    player.sendActionBar(Component.text("Saved waypoint '$name'"))
-                } else if (sub != null) {
-                    val entity = waypointEntities[sub]
-                    if (entity == null) {
-                        player.sendActionBar(Component.text("Unknown waypoint '$sub'", NamedTextColor.RED))
-                        return
-                    }
-                    entity.teleportPlayer(player)
-                    player.sendActionBar(Component.text("Teleported to '$sub'"))
-                } else {
-                    player.sendActionBar(Component.text("Usage: \$waypoint save <name> | \$waypoint <name>", NamedTextColor.RED))
-                }
-            }
-
-            "track" -> handleTrackCommand(player, parts)
-
-            // ---------------------------------------------------------------
-            // $connector add <north|south|east|west> <entrance|exit>
-            //   Places a connector at the player's current block position.
-            //
-            // $connector remove
-            //   Removes the currently selected connector (right-click to select).
-            //
-            // $connector list
-            //   Prints all connectors to action bar in sequence.
-            // ---------------------------------------------------------------
-            "connector" -> handleConnectorCommand(player, parts)
-
-            "decoration" -> handleDecorationCommand(player, parts)
-
-            else -> player.sendActionBar(Component.text("Unknown command: \$$command", NamedTextColor.RED))
-        }
-    }
-
-    // -------------------------------------------------------------------------
     // Connector editing
     // -------------------------------------------------------------------------
 
-    private fun handleConnectorCommand(player: Player, parts: List<String>) {
+    internal fun handleConnectorCommand(player: Player, parts: List<String>) {
         when (val sub = parts.getOrNull(1)) {
             "add" -> {
                 val dir = parts.getOrNull(2)
@@ -649,7 +409,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
     // Decoration editing
     // -------------------------------------------------------------------------
 
-    private fun handleDecorationCommand(player: Player, parts: List<String>) {
+    internal fun handleDecorationCommand(player: Player, parts: List<String>) {
         when (val sub = parts.getOrNull(1)) {
             "add" -> {
                 val typeKey = parts.getOrNull(2)?.let { raw ->
@@ -831,7 +591,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         trackEntities[id] = trackEntity
     }
 
-    private fun removeMarker(player: Player, name: String) {
+    internal fun removeMarker(player: Player, name: String) {
         val markerEntity = markerEntities.remove(name) ?: return
         markerEntity.anchorEntities.toList().forEach { it.remove() }
         markerEntity.anchorEntities.clear()
@@ -843,7 +603,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         player.sendActionBar(Component.text("Removed marker '$name'", NamedTextColor.RED))
     }
 
-    private fun removeAnchor(player: Player, anchorEntity: MarkerAnchorEntity) {
+    internal fun removeAnchor(player: Player, anchorEntity: MarkerAnchorEntity) {
         val group = anchorEntity.markerGroup
         anchorEntity.remove()
         group.anchorEntities.remove(anchorEntity)
@@ -854,7 +614,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         player.sendActionBar(Component.text("Removed anchor from '${group.markerName}'"))
     }
 
-    private fun handleTrackCommand(player: Player, parts: List<String>) {
+    internal fun handleTrackCommand(player: Player, parts: List<String>) {
         val sub = parts.getOrNull(1)
         val knownSubs = listOf("add", "remove", "duration", "pathmode", "easing", "teleport", "position", "up", "down", "move")
 
@@ -1044,7 +804,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         player.sendActionBar(Component.text("Renamed '$currentName' → '$newName'"))
     }
 
-    private fun setActiveMarker(player: Player, name: String) {
+    internal fun setActiveMarker(player: Player, name: String) {
         if (player.getTag(ACTIVE_MARKER_TAG) == name) return
         player.removeTag(ACTIVE_ANCHOR_TAG)
         player.removeTag(ACTIVE_REGION_TAG)
@@ -1075,7 +835,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
      * Infers the most specific [PropertyValue] type from a string value.
      * Tries Boolean (strict), then Int, then Double, then falls back to String.
      */
-    private fun inferPropertyValue(value: String): PropertyValue = when {
+    internal fun inferPropertyValue(value: String): PropertyValue = when {
         value.toBooleanStrictOrNull() != null -> PropertyValue.BoolValue(value.toBooleanStrict())
         value.toIntOrNull() != null -> PropertyValue.IntValue(value.toInt())
         value.toDoubleOrNull() != null -> PropertyValue.DoubleValue(value.toDouble())
