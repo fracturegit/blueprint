@@ -5,6 +5,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import net.kyori.adventure.key.Key
 import net.mcbrawls.blueprint.Blueprint
+import net.mcbrawls.blueprint.editor.decoration.DecorationRenderer
 import net.minestom.server.MinecraftServer
 import net.minestom.server.instance.LightingChunk
 import net.minestom.server.instance.block.Block
@@ -16,6 +17,8 @@ import java.util.UUID
 object BlueprintEditorHandler {
     private val logger: Logger = LoggerFactory.getLogger(BlueprintEditorHandler::class.java)
     private val scope = CoroutineScope(Dispatchers.IO.limitedParallelism(16, "blueprint-editors"))
+
+    var decorationRenderer: DecorationRenderer? = null
 
     private val instances: MutableMap<UUID, BlueprintEditorInstance> = mutableMapOf()
     private val initializingInstances: MutableList<BlueprintEditorInstance> = mutableListOf()

@@ -19,6 +19,7 @@ data class Blueprint<T>(
     val waypoints: Map<String, Waypoint> = emptyMap(),
     val cameraTracks: Map<String, CameraTrack> = emptyMap(),
     val connectors: List<RoomConnector> = emptyList(),
+    val decorations: List<Decoration> = emptyList(),
 ) {
     val size: Vector3ic = calculateBlueprintSize(palettedStates.map(PalettedState::pos))
 
@@ -58,8 +59,11 @@ data class Blueprint<T>(
                 RoomConnector.CODEC.listOf()
                     .optionalFieldOf("connectors", emptyList())
                     .forGetter(Blueprint<T>::connectors),
-            ).apply(instance) { palette, states, markers, regions, waypoints, tracks, connectors ->
-                Blueprint(palette, states, markers, regions, waypoints, tracks, connectors)
+                Decoration.CODEC.listOf()
+                    .optionalFieldOf("decorations", emptyList())
+                    .forGetter(Blueprint<T>::decorations),
+            ).apply(instance) { palette, states, markers, regions, waypoints, tracks, connectors, decorations ->
+                Blueprint(palette, states, markers, regions, waypoints, tracks, connectors, decorations)
             }
         }
 

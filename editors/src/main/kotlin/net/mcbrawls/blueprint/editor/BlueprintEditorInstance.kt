@@ -10,6 +10,7 @@ import net.mcbrawls.blueprint.Anchor
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.CardinalDirection
 import net.mcbrawls.blueprint.ConnectorType
+import net.mcbrawls.blueprint.Decoration
 import net.mcbrawls.blueprint.PlacedBlueprint
 import net.mcbrawls.blueprint.PropertyValue
 import net.mcbrawls.blueprint.RoomConnector
@@ -22,6 +23,7 @@ import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
 import net.mcbrawls.blueprint.editor.camera.CameraKeyframeEntity
 import net.mcbrawls.blueprint.editor.camera.CameraTrackEntity
 import net.mcbrawls.blueprint.editor.connector.ConnectorMarkerEntity
+import net.mcbrawls.blueprint.editor.decoration.DecorationEntity
 import net.mcbrawls.blueprint.editor.region.InstanceRegionHandler
 import net.mcbrawls.blueprint.editor.waypoint.WaypointEntity
 import net.mcbrawls.blueprint.minestom.MinestomBlueprintSerializer
@@ -69,6 +71,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
 
     /** All connector entities currently in this editor. Order is not significant. */
     private val connectorEntities: MutableList<ConnectorMarkerEntity> = mutableListOf()
+    private val decorationEntities: MutableList<DecorationEntity> = mutableListOf()
 
     fun initializeInternal() {
         if (blueprint != null) {
@@ -92,6 +95,11 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                 spawnConnector(connector)
             }
 
+            // Decorations: local positions are offset by ORIGIN to get world positions.
+            blueprint.decorations.forEach { decoration ->
+                spawnDecoration(decoration)
+            }
+
             regionHandler.initialize()
         } else {
             setBlock(ORIGIN, Block.STONE)
@@ -109,6 +117,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_TRACK_TAG)
             player.removeTag(ACTIVE_KEYFRAME_TAG)
             player.removeTag(ACTIVE_CONNECTOR_TAG)
+            player.removeTag(ACTIVE_DECORATION_TAG)
         }
 
         node.addListener(PlayerChatEvent::class.java) { event ->
@@ -190,6 +199,14 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                         player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
                     }
                 }
+                is DecorationEntity -> {
+                    player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                    player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                    player.removeTag(ACTIVE_TRACK_TAG); player.removeTag(ACTIVE_KEYFRAME_TAG)
+                    player.removeTag(ACTIVE_CONNECTOR_TAG)
+                    player.setTag(ACTIVE_DECORATION_TAG, entity.entityId)
+                    player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
+                }
             }
         }
 
@@ -219,6 +236,9 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                 }
                 is ConnectorMarkerEntity -> {
                     removeConnectorEntity(player, entity)
+                }
+                is DecorationEntity -> {
+                    removeDecorationEntity(player, entity)
                 }
             }
         }
@@ -305,6 +325,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                 player.removeTag(ACTIVE_TRACK_TAG)
                 player.removeTag(ACTIVE_KEYFRAME_TAG)
                 player.removeTag(ACTIVE_CONNECTOR_TAG)
+                player.removeTag(ACTIVE_DECORATION_TAG)
                 player.sendActionBar(Component.text("Cleared selection"))
             }
 
@@ -330,6 +351,13 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                     val entity = connectorEntities.getOrNull(index)
                     if (entity != null) removeConnectorEntity(player, entity)
                     return
+                }
+                player.getTag(ACTIVE_DECORATION_TAG)?.let { activeId ->
+                    val entity = decorationEntities.find { it.entityId == activeId }
+                    if (entity != null) {
+                        removeDecorationEntity(player, entity)
+                        return
+                    }
                 }
             }
 
@@ -484,6 +512,8 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             // ---------------------------------------------------------------
             "connector" -> handleConnectorCommand(player, parts)
 
+            "decoration" -> handleDecorationCommand(player, parts)
+
             else -> player.sendActionBar(Component.text("Unknown command: \$$command", NamedTextColor.RED))
         }
     }
@@ -613,6 +643,135 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         val typeLabel = entity.type.name.lowercase()
         val dirLabel = entity.direction.name.lowercase()
         player.sendActionBar(Component.text("Removed $typeLabel connector facing $dirLabel", NamedTextColor.RED))
+    }
+
+    // -------------------------------------------------------------------------
+    // Decoration editing
+    // -------------------------------------------------------------------------
+
+    private fun handleDecorationCommand(player: Player, parts: List<String>) {
+        when (val sub = parts.getOrNull(1)) {
+            "add" -> {
+                val typeKey = parts.getOrNull(2)?.let { raw ->
+                    runCatching {
+                        if (':' in raw) Key.key(raw) else Key.key("fracture", raw)
+                    }.getOrNull()
+                } ?: run {
+                    player.sendActionBar(Component.text("Usage: \$decoration add <type_key>", NamedTextColor.RED))
+                    return
+                }
+                val decoration = Decoration(
+                    type = typeKey,
+                    position = Vector3d(
+                        player.position.x - ORIGIN.x(),
+                        player.position.y - ORIGIN.y(),
+                        player.position.z - ORIGIN.z(),
+                    ),
+                    rotation = Vector2f(player.position.yaw, player.position.pitch),
+                )
+                val entity = spawnDecoration(decoration)
+                player.removeTag(ACTIVE_MARKER_TAG); player.removeTag(ACTIVE_ANCHOR_TAG)
+                player.removeTag(ACTIVE_REGION_TAG); player.removeTag(ACTIVE_WAYPOINT_TAG)
+                player.removeTag(ACTIVE_TRACK_TAG); player.removeTag(ACTIVE_KEYFRAME_TAG)
+                player.removeTag(ACTIVE_CONNECTOR_TAG)
+                player.setTag(ACTIVE_DECORATION_TAG, entity.entityId)
+                player.sendActionBar(Component.text("Added decoration '${typeKey.asString()}' (#${decorationEntities.size})"))
+            }
+
+            "remove" -> {
+                val activeId = player.getTag(ACTIVE_DECORATION_TAG) ?: run {
+                    player.sendActionBar(Component.text("No decoration selected — right-click one to select it", NamedTextColor.RED))
+                    return
+                }
+                val entity = decorationEntities.find { it.entityId == activeId } ?: run {
+                    player.sendActionBar(Component.text("Decoration not found", NamedTextColor.RED))
+                    return
+                }
+                removeDecorationEntity(player, entity)
+            }
+
+            "prop" -> {
+                val activeId = player.getTag(ACTIVE_DECORATION_TAG) ?: run {
+                    player.sendActionBar(Component.text("No decoration selected", NamedTextColor.RED))
+                    return
+                }
+                val key = parts.getOrNull(2) ?: run {
+                    player.sendActionBar(Component.text("Usage: \$decoration prop <key> [value]", NamedTextColor.RED))
+                    return
+                }
+                val entity = decorationEntities.find { it.entityId == activeId } ?: return
+                val value = parts.drop(3).joinToString(" ").takeIf { it.isNotEmpty() }
+                val updated = entity.properties.toMutableMap()
+                if (value != null) {
+                    updated[key] = inferPropertyValue(value)
+                    player.sendActionBar(Component.text("Decoration: set $key = $value"))
+                } else {
+                    updated.remove(key)
+                    player.sendActionBar(Component.text("Decoration: removed property '$key'"))
+                }
+                entity.properties = updated
+                entity.updateNametag()
+            }
+
+            "list" -> {
+                if (decorationEntities.isEmpty()) {
+                    player.sendActionBar(Component.text("No decorations placed"))
+                    return
+                }
+                decorationEntities.forEachIndexed { i, entity ->
+                    val lx = entity.position.blockX() - ORIGIN.x()
+                    val ly = entity.position.blockY() - ORIGIN.y()
+                    val lz = entity.position.blockZ() - ORIGIN.z()
+                    player.sendMessage(Component.text(
+                        "#${i + 1}: ${entity.decorationType.asString()} at $lx,$ly,$lz",
+                        NamedTextColor.AQUA
+                    ))
+                }
+            }
+
+            null -> {
+                player.sendActionBar(Component.text(
+                    "\$decoration add <type_key>  |  \$decoration remove  |  \$decoration prop <key> [val]  |  \$decoration list",
+                    NamedTextColor.YELLOW
+                ))
+            }
+
+            else -> player.sendActionBar(Component.text("Unknown decoration sub-command: $sub", NamedTextColor.RED))
+        }
+    }
+
+    private fun spawnDecoration(decoration: Decoration): DecorationEntity {
+        val renderer = BlueprintEditorHandler.decorationRenderer
+        val entity = DecorationEntity(decoration.type, decoration.properties)
+        val worldPos = Pos(
+            decoration.position.x() + ORIGIN.x(),
+            decoration.position.y() + ORIGIN.y(),
+            decoration.position.z() + ORIGIN.z(),
+            decoration.rotation.x(),
+            decoration.rotation.y(),
+        )
+        entity.setInstance(this, worldPos)
+        entity.updateNametag()
+
+        val preview = renderer?.spawnPreview(this, decoration)
+        if (preview != null) {
+            preview.setInstance(this, worldPos)
+            entity.addPassenger(preview)
+            entity.previewEntity = preview
+        }
+
+        decorationEntities.add(entity)
+        return entity
+    }
+
+    private fun removeDecorationEntity(player: Player, entity: DecorationEntity) {
+        entity.previewEntity?.let { BlueprintEditorHandler.decorationRenderer?.removePreview(it) }
+        entity.remove()
+        decorationEntities.remove(entity)
+        if (player.getTag(ACTIVE_DECORATION_TAG) == entity.entityId) {
+            player.removeTag(ACTIVE_DECORATION_TAG)
+        }
+        player.sendActionBar(Component.text("Removed decoration '${entity.decorationType.asString()}'", NamedTextColor.RED))
     }
 
     // -------------------------------------------------------------------------
@@ -1016,6 +1175,16 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                     ))
                 }
             }
+
+            player.getTag(ACTIVE_DECORATION_TAG)?.let { activeId ->
+                val entity = decorationEntities.find { it.entityId == activeId }
+                if (entity != null) {
+                    val idx = decorationEntities.indexOf(entity) + 1
+                    player.sendActionBar(Component.text(
+                        "Decoration #$idx: ${entity.decorationType.asString()} — \$decoration prop/remove/list"
+                    ))
+                }
+            }
         }
 
         drawTrackPaths()
@@ -1069,8 +1238,10 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             entity.connector.copy(position = localPos)
         }
 
+        val decorations = decorationEntities.map { it.createDecoration(root) }
+
         val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions, connectors)
-            .copy(waypoints = waypoints, cameraTracks = cameraTracks)
+            .copy(waypoints = waypoints, cameraTracks = cameraTracks, decorations = decorations)
 
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
@@ -1091,5 +1262,6 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         val ACTIVE_TRACK_TAG: Tag<String> = Tag.String("active_track")
         val ACTIVE_KEYFRAME_TAG: Tag<Int> = Tag.Integer("active_keyframe")
         val ACTIVE_CONNECTOR_TAG: Tag<Int> = Tag.Integer("active_connector")
+        val ACTIVE_DECORATION_TAG: Tag<Int> = Tag.Integer("active_decoration")
     }
 }

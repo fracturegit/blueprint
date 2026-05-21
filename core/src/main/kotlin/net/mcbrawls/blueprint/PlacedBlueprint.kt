@@ -153,6 +153,24 @@ data class PlacedBlueprint<T>(
     }
 
     /**
+     * Decorations
+     */
+
+    fun getDecorations(): List<Decoration> {
+        return blueprint.decorations.map { offsetDecoration(it) }
+    }
+
+    private fun offsetDecoration(decoration: Decoration): Decoration {
+        val rotatedRotation = Vector2f(rotation.rotateYaw(decoration.rotation.x()), decoration.rotation.y())
+        return Decoration(
+            type = decoration.type,
+            position = toWorld(decoration.position),
+            rotation = rotatedRotation,
+            properties = decoration.properties,
+        )
+    }
+
+    /**
      * Block positions
      */
 
