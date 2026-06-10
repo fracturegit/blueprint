@@ -21,6 +21,7 @@ import net.mcbrawls.blueprint.camera.EasingFunction
 import net.mcbrawls.blueprint.camera.PathMode
 import net.mcbrawls.blueprint.editor.anchor.MarkerAnchorEntity
 import net.mcbrawls.blueprint.editor.anchor.MarkerGroupEntity
+import net.mcbrawls.blueprint.editor.blockdata.BlockDataEntity
 import net.mcbrawls.blueprint.editor.camera.CameraKeyframeEntity
 import net.mcbrawls.blueprint.editor.camera.CameraTrackEntity
 import net.mcbrawls.blueprint.editor.connector.ConnectorMarkerEntity
@@ -76,6 +77,9 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
     /** Block-position (world coords) → mutable property map for blocks with custom data. */
     internal val blockDataMap: MutableMap<Vector3i, MutableMap<String, PropertyValue>> = mutableMapOf()
 
+    /** Block-position (world coords) → hologram entity for blocks that have data. */
+    internal val blockDataEntities: MutableMap<Vector3i, BlockDataEntity> = mutableMapOf()
+
     fun initializeInternal() {
         if (blueprint != null) {
             val placed = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
@@ -87,7 +91,9 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                     ORIGIN.blockY + datum.position.y(),
                     ORIGIN.blockZ + datum.position.z(),
                 )
-                blockDataMap[worldPos] = datum.properties.toMutableMap()
+                val props = datum.properties.toMutableMap()
+                blockDataMap[worldPos] = props
+                if (props.isNotEmpty()) spawnBlockDataEntity(worldPos, props)
             }
 
             placed.getAllMarkers().forEach { (name, marker) ->
@@ -563,6 +569,33 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_DECORATION_TAG)
         }
         player.sendActionBar(Component.text("Removed decoration '${entity.decorationType.asString()}'", NamedTextColor.RED))
+    }
+
+    // -------------------------------------------------------------------------
+    // Block data editing
+    // -------------------------------------------------------------------------
+
+    /**
+     * Ensures a [BlockDataEntity] exists for [worldPos] with [properties].
+     * If one already exists, updates its properties and nametag in-place.
+     */
+    internal fun spawnBlockDataEntity(worldPos: Vector3i, properties: Map<String, PropertyValue> = emptyMap()): BlockDataEntity {
+        blockDataEntities[worldPos]?.let { existing ->
+            existing.properties = properties
+            existing.updateNametag()
+            return existing
+        }
+        val origin = ORIGIN
+        val localPos = Vector3i(worldPos.x - origin.blockX(), worldPos.y - origin.blockY(), worldPos.z - origin.blockZ())
+        val entity = BlockDataEntity(worldPos, localPos, properties)
+        entity.setInstance(this, Pos(worldPos.x + 0.5, worldPos.y.toDouble(), worldPos.z + 0.5))
+        entity.updateNametag()
+        blockDataEntities[worldPos] = entity
+        return entity
+    }
+
+    internal fun removeBlockDataEntity(worldPos: Vector3i) {
+        blockDataEntities.remove(worldPos)?.remove()
     }
 
     // -------------------------------------------------------------------------

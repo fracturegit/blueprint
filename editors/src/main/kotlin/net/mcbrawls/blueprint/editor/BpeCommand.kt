@@ -655,8 +655,18 @@ class BpeCommand(
                     return@playerExecutor
                 }
                 val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                val worldPos = Vector3i(bx, by, bz)
                 val key = context[propKeyArg]
-                instance.blockDataMap.getOrPut(Vector3i(bx, by, bz)) { mutableMapOf() }.remove(key)
+                val props = instance.blockDataMap[worldPos]
+                if (props != null) {
+                    props.remove(key)
+                    if (props.isEmpty()) {
+                        instance.blockDataMap.remove(worldPos)
+                        instance.removeBlockDataEntity(worldPos)
+                    } else {
+                        instance.spawnBlockDataEntity(worldPos, props.toMap())
+                    }
+                }
                 player.sendActionBar(Component.text("Block: removed property '$key'"))
             }
         }
@@ -672,9 +682,12 @@ class BpeCommand(
                     return@playerExecutor
                 }
                 val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                val worldPos = Vector3i(bx, by, bz)
                 val key = context[propKeyArg]
                 val value = context[propValueArg]
-                instance.blockDataMap.getOrPut(Vector3i(bx, by, bz)) { mutableMapOf() }[key] = instance.inferPropertyValue(value)
+                val props = instance.blockDataMap.getOrPut(worldPos) { mutableMapOf() }
+                props[key] = instance.inferPropertyValue(value)
+                instance.spawnBlockDataEntity(worldPos, props.toMap())
                 player.sendActionBar(Component.text("Block: set $key = $value"))
             }
         }
@@ -712,7 +725,9 @@ class BpeCommand(
                     return@playerExecutor
                 }
                 val (bx, by, bz) = posStr.split(",").map { it.toInt() }
-                instance.blockDataMap.remove(Vector3i(bx, by, bz))
+                val worldPos = Vector3i(bx, by, bz)
+                instance.blockDataMap.remove(worldPos)
+                instance.removeBlockDataEntity(worldPos)
                 player.sendActionBar(Component.text("Block: cleared all properties", NamedTextColor.RED))
             }
         }
