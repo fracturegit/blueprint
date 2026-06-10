@@ -171,6 +171,22 @@ data class PlacedBlueprint<T>(
     }
 
     /**
+     * Block data
+     */
+
+    /** All block data in world coordinates, keyed by block position for O(1) lookup. */
+    val blockDataByPosition: Map<Vector3ic, BlockDatum> = blueprint.blockData.associate { datum ->
+        val worldPos = toWorldInt(datum.position)
+        worldPos to BlockDatum(worldPos, datum.properties)
+    }
+
+    /** Returns the block data at the given world-space position, or null if none. */
+    fun getBlockData(worldPos: Vector3ic): BlockDatum? = blockDataByPosition[worldPos]
+
+    /** Returns all block data entries with positions in world coordinates. */
+    fun getAllBlockData(): List<BlockDatum> = blockDataByPosition.values.toList()
+
+    /**
      * Block positions
      */
 

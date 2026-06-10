@@ -7,6 +7,7 @@ import net.kyori.adventure.sound.Sound
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import net.mcbrawls.blueprint.Anchor
+import net.mcbrawls.blueprint.BlockDatum
 import net.mcbrawls.blueprint.Blueprint
 import net.mcbrawls.blueprint.CardinalDirection
 import net.mcbrawls.blueprint.ConnectorType
@@ -72,10 +73,22 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
     internal val connectorEntities: MutableList<ConnectorMarkerEntity> = mutableListOf()
     internal val decorationEntities: MutableList<DecorationEntity> = mutableListOf()
 
+    /** Block-position (world coords) → mutable property map for blocks with custom data. */
+    internal val blockDataMap: MutableMap<Vector3i, MutableMap<String, PropertyValue>> = mutableMapOf()
+
     fun initializeInternal() {
         if (blueprint != null) {
             val placed = MinestomBlueprintSerializer.placeBlueprint(this, ORIGIN, blueprint)
             placedBlueprint = placed
+
+            blueprint.blockData.forEach { datum ->
+                val worldPos = Vector3i(
+                    ORIGIN.blockX + datum.position.x(),
+                    ORIGIN.blockY + datum.position.y(),
+                    ORIGIN.blockZ + datum.position.z(),
+                )
+                blockDataMap[worldPos] = datum.properties.toMutableMap()
+            }
 
             placed.getAllMarkers().forEach { (name, marker) ->
                 spawnMarker(name, marker)
@@ -117,6 +130,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             player.removeTag(ACTIVE_KEYFRAME_TAG)
             player.removeTag(ACTIVE_CONNECTOR_TAG)
             player.removeTag(ACTIVE_DECORATION_TAG)
+            player.removeTag(ACTIVE_BLOCK_TAG)
         }
 
         node.addListener(PlayerEntityInteractEvent::class.java) { event ->
@@ -223,6 +237,23 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
             // Region creation takes priority
             if (regionHandler.hasActiveCreationSession(player)) {
                 regionHandler.setPosition(player, Vector3d(point.x(), point.y(), point.z()))
+                return@addListener
+            }
+
+            // Feather: select block for data editing
+            if (event.itemStack.material() == Material.FEATHER) {
+                val bp = event.position
+                val worldPos = Vector3i(bp.blockX(), bp.blockY(), bp.blockZ())
+                player.removeTag(ACTIVE_MARKER_TAG)
+                player.removeTag(ACTIVE_ANCHOR_TAG)
+                player.removeTag(ACTIVE_REGION_TAG)
+                player.removeTag(ACTIVE_WAYPOINT_TAG)
+                player.removeTag(ACTIVE_TRACK_TAG)
+                player.removeTag(ACTIVE_KEYFRAME_TAG)
+                player.removeTag(ACTIVE_CONNECTOR_TAG)
+                player.removeTag(ACTIVE_DECORATION_TAG)
+                player.setTag(ACTIVE_BLOCK_TAG, "${worldPos.x()},${worldPos.y()},${worldPos.z()}")
+                player.playSound(Sound.sound(SoundEvent.UI_BUTTON_CLICK.key(), Sound.Source.PLAYER, 1f, 1f))
                 return@addListener
             }
 
@@ -945,6 +976,19 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                     ))
                 }
             }
+
+            player.getTag(ACTIVE_BLOCK_TAG)?.let { posStr ->
+                val parts = posStr.split(",")
+                val bx = parts[0].toInt()
+                val by = parts[1].toInt()
+                val bz = parts[2].toInt()
+                val worldPos = Vector3i(bx, by, bz)
+                val localPos = "(${bx - ORIGIN.blockX()},${by - ORIGIN.blockY()},${bz - ORIGIN.blockZ()})"
+                val data = blockDataMap[worldPos]
+                val propsDisplay = if (data.isNullOrEmpty()) "no data"
+                    else data.entries.joinToString(", ") { "${it.key}=${it.value.display}" }
+                player.sendActionBar(Component.text("Block $localPos — $propsDisplay — \$block prop/clear/list"))
+            }
         }
 
         drawTrackPaths()
@@ -1000,8 +1044,21 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
 
         val decorations = decorationEntities.map { it.createDecoration(root) }
 
+        val blockData = blockDataMap
+            .filter { (_, props) -> props.isNotEmpty() }
+            .map { (worldPos, props) ->
+                BlockDatum(
+                    position = Vector3i(
+                        worldPos.x - root.blockX(),
+                        worldPos.y - root.blockY(),
+                        worldPos.z - root.blockZ(),
+                    ),
+                    properties = props.toMap(),
+                )
+            }
+
         val blueprint = MinestomBlueprintHelper.createBlueprint(root, blockMap, markerGroups, regions, connectors)
-            .copy(waypoints = waypoints, cameraTracks = cameraTracks, decorations = decorations)
+            .copy(waypoints = waypoints, cameraTracks = cameraTracks, decorations = decorations, blockData = blockData)
 
         val tag = MinestomBlueprintSerializer.CODEC.encodeQuick(NbtOps.INSTANCE, blueprint)
         if (tag is CompoundBinaryTag) {
@@ -1023,5 +1080,6 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
         val ACTIVE_KEYFRAME_TAG: Tag<Int> = Tag.Integer("active_keyframe")
         val ACTIVE_CONNECTOR_TAG: Tag<Int> = Tag.Integer("active_connector")
         val ACTIVE_DECORATION_TAG: Tag<Int> = Tag.Integer("active_decoration")
+        val ACTIVE_BLOCK_TAG: Tag<String> = Tag.String("active_block")
     }
 }

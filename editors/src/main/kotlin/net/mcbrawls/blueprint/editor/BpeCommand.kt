@@ -19,6 +19,7 @@ import net.minestom.server.command.builder.suggestion.SuggestionEntry
 import net.minestom.server.entity.GameMode
 import net.minestom.server.entity.Player
 import net.minestom.server.sound.SoundEvent
+import org.joml.Vector3i
 
 class BpeCommand(
     private val serializer: MinestomBlueprintSerializer,
@@ -135,6 +136,7 @@ class BpeCommand(
                 player.removeTag(BlueprintEditorInstance.ACTIVE_KEYFRAME_TAG)
                 player.removeTag(BlueprintEditorInstance.ACTIVE_CONNECTOR_TAG)
                 player.removeTag(BlueprintEditorInstance.ACTIVE_DECORATION_TAG)
+                player.removeTag(BlueprintEditorInstance.ACTIVE_BLOCK_TAG)
                 player.sendActionBar(Component.text("Cleared selection"))
             }
         }
@@ -639,6 +641,79 @@ class BpeCommand(
             playerExecutor { player, _ ->
                 val instance = requireEditor(player) ?: return@playerExecutor
                 instance.handleDecorationCommand(player, listOf("decoration", "list"))
+            }
+        }
+
+        // /bpe block prop <key>  - remove property from selected block
+        addSyntax {
+            requireBase()
+            args(Literal("block"), Literal("prop"), propKeyArg)
+            playerExecutor { player, context ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                val posStr = player.getTag(BlueprintEditorInstance.ACTIVE_BLOCK_TAG) ?: run {
+                    player.sendActionBar(Component.text("No block selected — right-click with feather to select", NamedTextColor.RED))
+                    return@playerExecutor
+                }
+                val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                val key = context[propKeyArg]
+                instance.blockDataMap.getOrPut(Vector3i(bx, by, bz)) { mutableMapOf() }.remove(key)
+                player.sendActionBar(Component.text("Block: removed property '$key'"))
+            }
+        }
+
+        // /bpe block prop <key> <value>  - set property on selected block
+        addSyntax {
+            requireBase()
+            args(Literal("block"), Literal("prop"), propKeyArg, propValueArg)
+            playerExecutor { player, context ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                val posStr = player.getTag(BlueprintEditorInstance.ACTIVE_BLOCK_TAG) ?: run {
+                    player.sendActionBar(Component.text("No block selected — right-click with feather to select", NamedTextColor.RED))
+                    return@playerExecutor
+                }
+                val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                val key = context[propKeyArg]
+                val value = context[propValueArg]
+                instance.blockDataMap.getOrPut(Vector3i(bx, by, bz)) { mutableMapOf() }[key] = instance.inferPropertyValue(value)
+                player.sendActionBar(Component.text("Block: set $key = $value"))
+            }
+        }
+
+        // /bpe block list  - list all properties of selected block
+        addSyntax {
+            requireBase()
+            args(Literal("block"), Literal("list"))
+            playerExecutor { player, _ ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                val posStr = player.getTag(BlueprintEditorInstance.ACTIVE_BLOCK_TAG) ?: run {
+                    player.sendActionBar(Component.text("No block selected", NamedTextColor.RED))
+                    return@playerExecutor
+                }
+                val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                val data = instance.blockDataMap[Vector3i(bx, by, bz)]
+                if (data.isNullOrEmpty()) {
+                    player.sendActionBar(Component.text("Block has no data"))
+                } else {
+                    data.entries.forEach { (k, v) ->
+                        player.sendMessage(Component.text("$k = ${v.display}", NamedTextColor.AQUA))
+                    }
+                }
+            }
+        }
+
+        // /bpe block clear  - clear all properties from selected block
+        addSyntax {
+            requireBase()
+            args(Literal("block"), Literal("clear"))
+            playerExecutor { player, _ ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                val posStr = player.getTag(BlueprintEditorInstance.ACTIVE_BLOCK_TAG) ?: run {
+                    player.sendActionBar(Component.text("No block selected", NamedTextColor.RED))
+                    return@playerExecutor
+                }
+                val (bx, by, bz) = posStr.split(",").map { it.toInt() }
+                instance.blockDataMap.remove(Vector3i(bx, by, bz))
+                player.sendActionBar(Component.text("Block: cleared all properties", NamedTextColor.RED))
             }
         }
     }
