@@ -287,6 +287,7 @@ class InstanceRegionHandler(private val instance: BlueprintEditorInstance, root:
             }
 
             setNoGravity(true)
+            preventBlockPlacement = false
         }
 
         override fun updateNewViewer(player: Player) {

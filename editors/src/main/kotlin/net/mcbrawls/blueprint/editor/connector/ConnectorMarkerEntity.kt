@@ -42,6 +42,7 @@ class ConnectorMarkerEntity(
         meta.width = 0.6f
         meta.height = 0.6f
         setNoGravity(true)
+        preventBlockPlacement = false
     }
 
     fun updateNametag() {

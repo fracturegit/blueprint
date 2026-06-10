@@ -35,6 +35,7 @@ class BlockDataEntity(
 
     init {
         setNoGravity(true)
+        preventBlockPlacement = false
     }
 
     override fun update(time: Long) {

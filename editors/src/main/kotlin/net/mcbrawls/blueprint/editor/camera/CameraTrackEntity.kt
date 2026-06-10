@@ -28,6 +28,7 @@ class CameraTrackEntity(val trackId: String) : Entity(EntityType.INTERACTION) {
             meta.response = true
         }
         setNoGravity(true)
+        preventBlockPlacement = false
     }
 
     override fun update(time: Long) {

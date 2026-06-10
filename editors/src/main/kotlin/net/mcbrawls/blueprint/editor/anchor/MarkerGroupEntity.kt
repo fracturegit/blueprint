@@ -46,6 +46,7 @@ class MarkerGroupEntity(
             meta.response = true
         }
         setNoGravity(true)
+        preventBlockPlacement = false
     }
 
     override fun update(time: Long) {
