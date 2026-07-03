@@ -372,6 +372,33 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                 player.sendActionBar(Component.text("Added $typeLabel connector facing $dirLabel at local $localPos"))
             }
 
+            "type" -> {
+                val index = player.getTag(ACTIVE_CONNECTOR_TAG) ?: run {
+                    player.sendActionBar(Component.text(
+                        "No connector selected — right-click one to select it",
+                        NamedTextColor.RED
+                    ))
+                    return
+                }
+                val entity = connectorEntities.getOrNull(index) ?: run {
+                    player.sendActionBar(Component.text("Connector not found", NamedTextColor.RED))
+                    return
+                }
+                val newType = parts.getOrNull(2)
+                    ?.uppercase()
+                    ?.let { runCatching { ConnectorType.valueOf(it) }.getOrNull() }
+                    ?: run {
+                        player.sendActionBar(Component.text(
+                            "Usage: \$connector type <entrance|exit|both>",
+                            NamedTextColor.RED
+                        ))
+                        return
+                    }
+                entity.type = newType
+                entity.updateNametag()
+                player.sendActionBar(Component.text("Connector set to ${newType.name.lowercase()}"))
+            }
+
             "remove" -> {
                 val index = player.getTag(ACTIVE_CONNECTOR_TAG) ?: run {
                     player.sendActionBar(Component.text(
@@ -394,7 +421,11 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
                 }
                 // Print all connectors to chat since action bar only shows one line.
                 connectorEntities.forEachIndexed { i, entity ->
-                    val color = if (entity.type == ConnectorType.ENTRANCE) NamedTextColor.GREEN else NamedTextColor.GOLD
+                    val color = when (entity.type) {
+                        ConnectorType.ENTRANCE -> NamedTextColor.GREEN
+                        ConnectorType.EXIT -> NamedTextColor.GOLD
+                        ConnectorType.BOTH -> NamedTextColor.AQUA
+                    }
                     player.sendMessage(Component.text(
                         "#${i + 1}: ${entity.type.name.lowercase()} facing ${entity.direction.name.lowercase()} at ${entity.localPosition.x()},${entity.localPosition.y()},${entity.localPosition.z()}",
                         color
@@ -404,7 +435,7 @@ class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Blo
 
             null -> {
                 player.sendActionBar(Component.text(
-                    "\$connector add <dir> <entrance|exit>  |  \$connector remove  |  \$connector list",
+                    "\$connector add <dir> <entrance|exit|both>  |  \$connector type <entrance|exit|both>  |  \$connector remove  |  \$connector list",
                     NamedTextColor.YELLOW
                 ))
             }

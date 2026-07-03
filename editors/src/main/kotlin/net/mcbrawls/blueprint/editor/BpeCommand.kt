@@ -571,6 +571,19 @@ class BpeCommand(
             }
         }
 
+        // /bpe connector type <type>
+        addSyntax {
+            requireBase()
+            args(Literal("connector"), Literal("type"), connectorTypeArg)
+            playerExecutor { player, context ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                instance.handleConnectorCommand(
+                    player,
+                    listOf("connector", "type", context[connectorTypeArg])
+                )
+            }
+        }
+
         // /bpe connector remove
         addSyntax {
             requireBase()

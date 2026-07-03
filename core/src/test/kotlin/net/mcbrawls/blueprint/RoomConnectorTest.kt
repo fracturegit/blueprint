@@ -54,4 +54,18 @@ class RoomConnectorTest {
         assertEquals(Vector3i(original.position), Vector3i(result.position))
         assertEquals(original.direction, result.direction)
     }
+
+    @Test fun `BOTH type is preserved through rotation`() {
+        val c = RoomConnector(Vector3i(0, 0, 0), CardinalDirection.NORTH, ConnectorType.BOTH)
+        assertEquals(ConnectorType.BOTH, c.rotate(Rotation.CW_90, size10x5x8).type)
+    }
+
+    @Test fun `role predicates`() {
+        assertEquals(true, ConnectorType.ENTRANCE.isEntrance)
+        assertEquals(false, ConnectorType.ENTRANCE.isExit)
+        assertEquals(false, ConnectorType.EXIT.isEntrance)
+        assertEquals(true, ConnectorType.EXIT.isExit)
+        assertEquals(true, ConnectorType.BOTH.isEntrance)
+        assertEquals(true, ConnectorType.BOTH.isExit)
+    }
 }

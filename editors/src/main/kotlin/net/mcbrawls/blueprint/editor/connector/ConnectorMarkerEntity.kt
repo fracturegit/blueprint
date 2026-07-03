@@ -26,16 +26,18 @@ import org.joml.Vector3ic
 class ConnectorMarkerEntity(
     val localPosition: Vector3ic,
     val direction: CardinalDirection,
-    val type: ConnectorType,
+    var type: ConnectorType,
 ) : Entity(EntityType.INTERACTION) {
 
     /** Reconstruct the [RoomConnector] this entity represents, using its local position. */
     val connector: RoomConnector get() = RoomConnector(localPosition, direction, type)
 
-    private val particleColor: DyeColor = when (type) {
-        ConnectorType.ENTRANCE -> DyeColor.LIME
-        ConnectorType.EXIT -> DyeColor.ORANGE
-    }
+    private val particleColor: DyeColor
+        get() = when (type) {
+            ConnectorType.ENTRANCE -> DyeColor.LIME
+            ConnectorType.EXIT -> DyeColor.ORANGE
+            ConnectorType.BOTH -> DyeColor.CYAN
+        }
 
     init {
         val meta = entityMeta as InteractionMeta
@@ -48,7 +50,11 @@ class ConnectorMarkerEntity(
     fun updateNametag() {
         val typeLabel = type.name.lowercase()
         val dirLabel = direction.name.lowercase()
-        val color = if (type == ConnectorType.ENTRANCE) NamedTextColor.GREEN else NamedTextColor.GOLD
+        val color = when (type) {
+            ConnectorType.ENTRANCE -> NamedTextColor.GREEN
+            ConnectorType.EXIT -> NamedTextColor.GOLD
+            ConnectorType.BOTH -> NamedTextColor.AQUA
+        }
         customName = Component.text("[$typeLabel] $dirLabel", color)
         isCustomNameVisible = true
     }
