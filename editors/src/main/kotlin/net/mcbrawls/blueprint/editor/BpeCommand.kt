@@ -79,6 +79,7 @@ class BpeCommand(
         }
     }
     private val decorTypeArg = ArgumentType.String("decor_type")
+    private val ticksArg = ArgumentType.Long("ticks")
 
     init {
         // /bpe open <blueprint>
@@ -654,6 +655,18 @@ class BpeCommand(
             playerExecutor { player, _ ->
                 val instance = requireEditor(player) ?: return@playerExecutor
                 instance.handleDecorationCommand(player, listOf("decoration", "list"))
+            }
+        }
+
+        // /bpe time set <ticks>  - set world time of the editor instance
+        addSyntax {
+            requireBase()
+            args(Literal("time"), Literal("set"), ticksArg)
+            playerExecutor { player, context ->
+                val instance = requireEditor(player) ?: return@playerExecutor
+                val ticks = context[ticksArg]
+                instance.time = ticks
+                player.sendActionBar(Component.text("Set time to $ticks"))
             }
         }
 
