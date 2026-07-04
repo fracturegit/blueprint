@@ -26,7 +26,7 @@ object BlueprintEditorHandler {
     fun add(blueprint: Blueprint<Block>?, id: Key, loadedCallback: (BlueprintEditorInstance) -> Unit) {
         val instance = BlueprintEditorInstance(id, blueprint)
         instance.setChunkSupplier(::LightingChunk)
-        instance.time = 12000
+        instance.time = 6000
 
         scope.launch {
             try {

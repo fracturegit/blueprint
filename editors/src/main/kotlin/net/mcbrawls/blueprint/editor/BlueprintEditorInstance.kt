@@ -61,6 +61,11 @@ import java.util.UUID
 class BlueprintEditorInstance(var blueprintId: Key, val blueprint: Blueprint<Block>?) : InstanceContainer(UUID.randomUUID(), DimensionType.OVERWORLD) {
     private var initialized: Boolean = false
 
+    init {
+        // Editors have no day cycle: time only changes via explicit `/bpe time set`.
+        defaultClock()?.pause()
+    }
+
     private var placedBlueprint: PlacedBlueprint<Block>? = null
     private val bounds = Bounds(ORIGIN)
     internal val regionHandler = InstanceRegionHandler(this, ORIGIN, blueprint?.regions ?: emptyMap())
