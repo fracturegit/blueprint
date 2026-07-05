@@ -85,15 +85,72 @@ open class MinestomBlueprintSerializer(folderRoot: File, defaultNamespace: Strin
                 Rotation.CW_180 -> Vector3i(sx - 1 - x, y, sz - 1 - z)
                 Rotation.CW_270 -> Vector3i(z, y, sx - 1 - x)
             }
-            val facing = block.properties()["facing"]
-            val rotatedBlock = if (facing != null) {
-                val dir = CardinalDirection.entries.find { it.name.equals(facing, ignoreCase = true) }
-                if (dir != null) {
-                    block.withProperties(block.properties() + ("facing" to rotation.rotate(dir).name.lowercase()))
-                } else block
-            } else block
-            return newPos to rotatedBlock
+            return newPos to rotateBlockState(block, rotation)
         }
+
+        /**
+         * Rotates a block's state properties by [rotation]: `facing` (cardinal values only), the
+         * `north`/`east`/`south`/`west` connection properties (walls, fences, panes, vines, ...),
+         * `axis` (logs, pillars), rail `shape` values, and standing sign/banner `rotation` (0-15).
+         * Properties whose meaning is relative to `facing` (stair `shape`, door `hinge`, chest
+         * `type`) need no remapping.
+         */
+        fun rotateBlockState(block: Block, rotation: Rotation): Block {
+            if (rotation == Rotation.NONE) return block
+
+            val properties = block.properties()
+            if (properties.isEmpty()) return block
+
+            val rotated = mutableMapOf<String, String>()
+
+            properties["facing"]?.let { facing ->
+                val dir = CardinalDirection.entries.find { it.name.equals(facing, ignoreCase = true) }
+                if (dir != null) rotated["facing"] = rotation.rotate(dir).name.lowercase()
+            }
+
+            // Connection properties move with the rotation: the old north value ends up on
+            // the side north rotates to (east for CW_90, and so on).
+            CardinalDirection.entries.forEach { dir ->
+                val value = properties[dir.name.lowercase()] ?: return@forEach
+                rotated[rotation.rotate(dir).name.lowercase()] = value
+            }
+
+            properties["axis"]?.let { axis ->
+                if (rotation == Rotation.CW_90 || rotation == Rotation.CW_270) {
+                    when (axis) {
+                        "x" -> rotated["axis"] = "z"
+                        "z" -> rotated["axis"] = "x"
+                    }
+                }
+            }
+
+            properties["shape"]?.let { shape ->
+                var rotatedShape = shape
+                repeat(rotation.turns) { rotatedShape = RAIL_SHAPE_CW[rotatedShape] ?: return@let }
+                rotated["shape"] = rotatedShape
+            }
+
+            properties["rotation"]?.let { value ->
+                val segment = value.toIntOrNull() ?: return@let
+                rotated["rotation"] = ((segment + rotation.turns * 4) % 16).toString()
+            }
+
+            return if (rotated.isEmpty()) block else block.withProperties(properties + rotated)
+        }
+
+        /** One clockwise 90-degree turn of each rail `shape` value. Non-rail shapes are absent. */
+        private val RAIL_SHAPE_CW = mapOf(
+            "north_south" to "east_west",
+            "east_west" to "north_south",
+            "ascending_north" to "ascending_east",
+            "ascending_east" to "ascending_south",
+            "ascending_south" to "ascending_west",
+            "ascending_west" to "ascending_north",
+            "north_east" to "south_east",
+            "south_east" to "south_west",
+            "south_west" to "north_west",
+            "north_west" to "north_east",
+        )
 
         fun placePosition(instance: Instance, point: Point, block: Block) {
             instance.setBlock(point, block, false)
