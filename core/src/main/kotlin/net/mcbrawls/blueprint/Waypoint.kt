@@ -10,6 +10,8 @@ data class Waypoint(
     val position: Vector3dc,
     val rotation: Vector2fc,
 ) {
+    val anchor: Anchor by lazy { Anchor(position, rotation) }
+
     companion object {
         val CODEC: Codec<Waypoint> = RecordCodecBuilder.create { instance ->
             instance.group(
